@@ -414,7 +414,7 @@ Item {
             else if (event.key === Qt.Key_Up) { root.moveSelection(0, -1); event.accepted = true }
             else if (event.key === Qt.Key_Right && cursorPosition === text.length && selectedText.length === 0) { root.moveSelection(1, 0); event.accepted = true }
             else if (event.key === Qt.Key_Left && cursorPosition === 0 && selectedText.length === 0) { root.moveSelection(-1, 0); event.accepted = true }
-            else if (event.key === Qt.Key_Space && text.length === 0) { root.pinToggle(); event.accepted = true }
+            else if (event.key === Qt.Key_Space) { root.pinToggle(); event.accepted = true }
             else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.openCurrent(); event.accepted = true }
           }
           onTextChanged: { root.queryText = text; debounce.restart() }
