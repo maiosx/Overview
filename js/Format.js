@@ -33,6 +33,11 @@ function videoThumbPath(path, home) {
   if (!h.length) return ""
   return h + "/.cache/overview/vid/" + cacheKey(path) + ".jpg"
 }
+function imageThumbPath(path, home) {
+  var h = String(home || "")
+  if (!h.length) return ""
+  return h + "/.cache/overview/img/" + cacheKey(path) + ".jpg"
+}
 function isArchiveName(path) {
   var s = String(path || "").toLowerCase()
   if (s.indexOf(".tar.gz") === s.length - 7 && s.length > 7) return true

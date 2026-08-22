@@ -84,15 +84,32 @@ Item {
     "else pdftoppm -png -r 110 -f 1 -l \"$n\" \"$src\" \"$out/page\" >/dev/null 2>&1; fi; " +
     "ls -1 \"$out\"/page*.png 2>/dev/null"
 
-  readonly property string imageBody: "src=\"$1\"; out=\"$2\"; " +
-    "ident=$(command -v identify || true); conv=$(command -v magick || command -v convert || true); " +
-    "if [ -z \"$ident\" ] || [ -z \"$conv\" ]; then printf '%s' \"$src\"; exit 0; fi; " +
-    "px=$(\"$ident\" -ping -format '%[fx:int(w*h)]' \"$src\" 2>/dev/null || printf '0'); " +
-    "case \"$px\" in ''|*[!0-9]*) px=0 ;; esac; " +
-    "if [ \"$px\" -le 20000000 ]; then printf '%s' \"$src\"; exit 0; fi; " +
-    "mkdir -p \"$(dirname \"$out\")\"; " +
-    "\"$conv\" \"$src\" -resize '4472x4472>' \"$out\" 2>/dev/null && [ -f \"$out\" ] && printf '%s' \"$out\" && exit 0; " +
-    "printf '%s' \"$src\""
+  readonly property string imageBody: "src=\"$1\"; out=\"$2\"; edge=\"${3:-4472}\"; force=\"${4:-0}\"; " +
+    "case \"$edge\" in ''|*[!0-9]*) edge=4472 ;; esac; " +
+    "MAXPX=20000000; " +
+    "ident=$(command -v identify || true); " +
+    "conv=$(command -v magick || command -v convert || true); " +
+    "ff=$(command -v ffmpeg || true); " +
+    "mkdir -p \"$(dirname \"$out\")\" || { printf '%s' TOO_LARGE; exit 0; }; " +
+    "ulimit -t 8 2>/dev/null; ulimit -v 524288 2>/dev/null; ulimit -f 8192 2>/dev/null; " +
+    "px=0; " +
+    "if [ -n \"$ident\" ]; then " +
+    "  px=$(\"$ident\" -ping -format '%[fx:int(w*h)]' \"$src\" 2>/dev/null || printf '0'); " +
+    "  case \"$px\" in ''|*[!0-9]*) px=0 ;; esac; " +
+    "fi; " +
+    "if [ \"$force\" != 1 ] && [ \"$px\" -gt 0 ] && [ \"$px\" -le \"$MAXPX\" ]; then printf '%s' \"$src\"; exit 0; fi; " +
+    "ok=0; " +
+    "if [ -n \"$conv\" ]; then " +
+    "  \"$conv\" \"$src\" -limit memory 256MiB -limit map 256MiB -resize \"${edge}x${edge}>\" \"$out\" >/dev/null 2>&1 && [ -s \"$out\" ] && ok=1; " +
+    "fi; " +
+    "if [ \"$ok\" != 1 ] && [ -n \"$ff\" ]; then " +
+    "  vf=\"scale=w='min(iw,$edge)':h='min(ih,$edge)':force_original_aspect_ratio=decrease\"; " +
+    "  if command -v timeout >/dev/null 2>&1; then timeout -k 1 8 \"$ff\" -hide_banner -loglevel error -nostdin -y -i \"$src\" -frames:v 1 -vf \"$vf\" -q:v 3 \"$out\" >/dev/null 2>&1; " +
+    "  else \"$ff\" -hide_banner -loglevel error -nostdin -y -i \"$src\" -frames:v 1 -vf \"$vf\" -q:v 3 \"$out\" >/dev/null 2>&1; fi; " +
+    "  [ -s \"$out\" ] && ok=1; " +
+    "fi; " +
+    "if [ \"$ok\" = 1 ]; then printf '%s' \"$out\"; exit 0; fi; " +
+    "printf '%s' TOO_LARGE"
 
   readonly property string videoBody: "src=\"$1\"; out=\"$2\"; " +
     "ff=$(command -v ffmpeg || true); " +
@@ -154,7 +171,7 @@ Item {
     root.backend = usedBackend || "search"
     root.resultsRevision += 1
     root.lastStatus = "hits:" + hits.length
-    root.enqueueVideoThumbs(hits)
+    root.enqueueThumbs(hits)
   }
   function diskHuman(n) {
     var v = Number(n) || 0
@@ -236,8 +253,8 @@ Item {
     if (kind === "image") {
       if (imageProc.running) imageProc.running = false
       imageKill.restart()
-      var cache = root.home + "/.cache/overview/img/" + Format.basename(p).replace(/[^A-Za-z0-9._-]/g, "_") + ".jpg"
-      imageProc.command = ["sh", "-c", root.imageBody, "overview-image", p, cache]
+      var cache = Format.imageThumbPath(p, root.home)
+      imageProc.command = ["sh", "-c", root.imageBody, "overview-image", p, cache, "2048", "0"]
       imageProc.running = true
       root.lastPreview = Format.localPreview(p)
       return String(root.previewRevision + 1)
@@ -310,14 +327,18 @@ Item {
       diskTotal: root.diskTotal
     })
   }
-  function enqueueVideoThumbs(hits) {
+  function enqueueThumbs(hits) {
     var q = []
     for (var i = 0; i < hits.length; i++) {
       var hit = hits[i]
-      if (!hit || hit.kind !== "video" || !hit.path) continue
-      var out = Format.videoThumbPath(hit.path, root.home)
-      if (!out.length) continue
-      q.push({ src: String(hit.path), out: out })
+      if (!hit || !hit.path) continue
+      if (hit.kind === "video") {
+        var vout = Format.videoThumbPath(hit.path, root.home)
+        if (vout.length) q.push({ kind: "video", src: String(hit.path), out: vout })
+      } else if (hit.kind === "image") {
+        var iout = Format.imageThumbPath(hit.path, root.home)
+        if (iout.length) q.push({ kind: "image", src: String(hit.path), out: iout })
+      }
     }
     root.videoQueue = q
     Qt.callLater(root.runThumbQueue)
@@ -328,7 +349,10 @@ Item {
     var job = root.videoQueue[0]
     root.videoQueue = root.videoQueue.slice(1)
     if (!job || !root.underHome(job.src)) { Qt.callLater(root.runThumbQueue); return }
-    thumbProc.command = ["sh", "-c", root.videoBody, "overview-vthumb", job.src, job.out]
+    if (job.kind === "image")
+      thumbProc.command = ["sh", "-c", root.imageBody, "overview-ithumb", job.src, job.out, "640", "1"]
+    else
+      thumbProc.command = ["sh", "-c", root.videoBody, "overview-vthumb", job.src, job.out]
     thumbProc.running = true
   }
   Process {
@@ -339,12 +363,14 @@ Item {
       onStreamFinished: {
         imageKill.stop()
         var out = String(text || "").replace(/^\s+|\s+$/g, "")
-        if (!out.length || !root.underHome(out) && out.indexOf(root.home + "/.cache/overview/") !== 0)
-          out = root.previewPath
-        var prev = Format.localPreview(root.previewPath)
-        if (out.length && out !== root.previewPath)
-          prev.path = out
-        root.lastPreview = prev
+        var cachePrefix = root.home + "/.cache/overview/"
+        var blocked = !out.length || out === "TOO_LARGE"
+        var safe = !blocked && (out.indexOf(cachePrefix) === 0 || (out === root.previewPath && root.underHome(out)))
+        if (!safe) {
+          root.lastPreview = { kind: "image", path: "", blocked: true, label: Format.basename(root.previewPath) }
+        } else {
+          root.lastPreview = { kind: "image", path: out, blocked: false, label: Format.basename(root.previewPath) }
+        }
         root.previewRevision += 1
       }
     }

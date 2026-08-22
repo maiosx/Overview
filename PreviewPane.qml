@@ -45,12 +45,13 @@ Item {
     Image {
       anchors.fill: parent
       anchors.margins: 12
-      visible: root.kind === "image" && !root.loading
+      visible: root.kind === "image" && !root.loading && !(preview && preview.blocked) && preview.path
       source: preview.path ? Format.fileUrl(preview.path) : ""
       fillMode: Image.PreserveAspectFit
       asynchronous: true
       cache: false
-      sourceSize.width: 4472
+      sourceSize.width: 2048
+      sourceSize.height: 2048
     }
 
     Image {
@@ -204,6 +205,17 @@ Item {
           enabled: root.selectable
         }
       }
+    }
+
+    Text {
+      anchors.centerIn: parent
+      width: parent.width - 40
+      visible: root.kind === "image" && preview && preview.blocked
+      text: "image too large to preview"
+      textFormat: Text.PlainText
+      color: root.foreground
+      wrapMode: Text.WordWrap
+      horizontalAlignment: Text.AlignHCenter
     }
 
     Text {

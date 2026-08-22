@@ -52,7 +52,10 @@ Item {
     return String(root.previewResult && root.previewResult.kind ? root.previewResult.kind : "")
   }
   readonly property string heroThumb: {
-    if (root.heroKind === "image") return root.heroPath
+    if (root.heroKind === "image") {
+      if (root.previewResult && root.previewResult.blocked) return ""
+      return String(root.previewResult && root.previewResult.path ? root.previewResult.path : "")
+    }
     if (root.heroKind === "video") {
       var t = String(root.previewResult && root.previewResult.thumb ? root.previewResult.thumb : "")
       if (t.length) return t
@@ -179,12 +182,8 @@ Item {
       var kind = hit && hit.kind ? String(hit.kind) : Format.kindOf(p, false)
       root.activePath = p
       root.armPanLater()
-      if (kind === "image") {
-        root.previewResult = Format.localPreview(p)
-        root.previewLoading = false
-      } else if (hit && hit.path) {
+      if (hit && hit.path)
         root.requestPreview(p, 1)
-      }
     } else {
       root.previewResult = ({})
       root.activePath = ""
@@ -204,10 +203,8 @@ Item {
     var prev = Number(snap.previewRevision)
     if (!isNaN(prev) && prev !== root.lastPreviewRev) {
       root.lastPreviewRev = prev
-      if (root.heroKind !== "image") {
-        root.previewResult = snap.preview || {}
-        root.previewLoading = false
-      }
+      root.previewResult = snap.preview || {}
+      root.previewLoading = false
     }
     if (snap.home) root.homePrefix = String(snap.home)
     if (snap.diskLabel !== undefined) root.diskLabel = String(snap.diskLabel || "")
@@ -239,12 +236,8 @@ Item {
     var kind = hit && hit.kind ? String(hit.kind) : Format.kindOf(p, false)
     root.activePath = p
     root.armPanLater()
-    if (kind === "image") {
-      root.previewResult = Format.localPreview(p)
-      root.previewLoading = false
-    } else {
+    if (p.length)
       root.requestPreview(p, 1)
-    }
   }
   function moveSelection(dx, dy) {
     if (!root.results.length) return
@@ -396,7 +389,8 @@ Item {
             asynchronous: true
             cache: true
             opacity: 0.92
-            sourceSize.width: 4472
+            sourceSize.width: 2048
+            sourceSize.height: 2048
             onSourceChanged: {
               y = 0
               heroPan.stop()
