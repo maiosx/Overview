@@ -589,7 +589,7 @@ Item {
       id: pinnedPane
       anchors.fill: parent
       visible: root.pinned
-      color: Qt.rgba(root.background.r, root.background.g, root.background.b, 0.72)
+      color: Qt.rgba(root.background.r, root.background.g, root.background.b, 1)
       focus: root.pinned
       Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Escape || event.key === Qt.Key_Space) { root.pinToggle(); event.accepted = true }
