@@ -462,7 +462,7 @@ Item {
               property: "y"
               from: 0
               to: Math.min(0, heroClip.height - heroImg.height)
-              duration: 2200
+              duration: 8000
               easing.type: Easing.InOutSine
             }
             PauseAnimation { duration: 500 }
@@ -470,7 +470,7 @@ Item {
               target: heroImg
               property: "y"
               to: 0
-              duration: 2200
+              duration: 8000
               easing.type: Easing.InOutSine
             }
             PauseAnimation { duration: 700 }
