@@ -618,6 +618,7 @@ Item {
         foreground: root.foreground
         accent: root.accent
         selectable: true
+        autoplay: root.pinned
       }
       Text {
         anchors.bottom: parent.bottom

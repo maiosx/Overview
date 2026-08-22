@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtMultimedia
 import qs.Commons
 import "js/Format.js" as Format
 
@@ -16,6 +17,7 @@ Item {
   property string monoFamily: "monospace"
   property int pinPage: 1
   property bool selectable: true
+  property bool autoplay: false
   readonly property string kind: String(preview && preview.kind ? preview.kind : "")
   readonly property string bodyText: {
     if (preview && preview.text) return Format.previewText(String(preview.text).slice(0, 200000))
@@ -49,6 +51,42 @@ Item {
       asynchronous: true
       cache: false
       sourceSize.width: 4472
+    }
+
+    Image {
+      anchors.fill: parent
+      anchors.margins: 12
+      visible: root.autoplay && root.kind === "video" && vidPlayer.playbackState !== MediaPlayer.PlayingState
+      source: preview.thumb ? Format.fileUrl(preview.thumb) : ""
+      fillMode: Image.PreserveAspectFit
+      asynchronous: true
+      cache: true
+      sourceSize.width: 1280
+    }
+
+    VideoOutput {
+      id: vidOut
+      anchors.fill: parent
+      anchors.margins: 12
+      visible: root.autoplay && root.kind === "video"
+      fillMode: VideoOutput.PreserveAspectFit
+    }
+
+    MediaPlayer {
+      id: vidPlayer
+      videoOutput: vidOut
+      audioOutput: AudioOutput {
+        muted: true
+        volume: 0
+      }
+      loops: MediaPlayer.Infinite
+      source: root.autoplay && root.kind === "video" && preview && preview.path ? Format.fileUrl(preview.path) : ""
+      onSourceChanged: {
+        if (source && source.toString().length)
+          play()
+        else
+          stop()
+      }
     }
 
     Flickable {
