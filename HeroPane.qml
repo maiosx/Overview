@@ -66,6 +66,7 @@ Item {
       asynchronous: true
       cache: true
       sourceSize.width: 2048
+      sourceSize.height: 2048
       source: hero.pendingThumb.length ? Format.fileUrl(hero.pendingThumb) : ""
       onStatusChanged: {
         if (status === Image.Ready && hero.pendingThumb.length)
@@ -103,6 +104,7 @@ Item {
       cache: true
       opacity: hero.cinema ? 1 : 0.92
       sourceSize.width: 2048
+      sourceSize.height: 2048
       onSourceChanged: {
         heroPan.stop()
         y = 0
