@@ -42,6 +42,9 @@ Item {
   property bool panArmed: false
   property string shownThumb: ""
   property string pendingThumb: ""
+  property bool cinema: false
+  property int cinemaSavedIndex: 0
+  property int cinemaLastPick: -1
   readonly property string heroPath: {
     var hit = root.currentHit()
     if (hit && hit.path) return String(hit.path)
@@ -102,11 +105,13 @@ Item {
     root.activePath = ""
     root.shownThumb = ""
     root.pendingThumb = ""
+    root.cinema = false
     root.enableLayerBlur()
     root.requestQuery("")
+    idleTimer.restart()
     Qt.callLater(function() { searchField.forceActiveFocus() })
   }
-  function close() { root.opened = false; root.pinned = false }
+  function close() { root.opened = false; root.pinned = false; root.cinema = false; idleTimer.stop(); slideTimer.stop() }
   function toggle() { if (root.opened) root.close(); else root.open("{}") }
   function query(arg) { return root.callIpc("query", arg) }
   function snapshot(arg) { return root.callIpc("snapshot", arg) }
@@ -251,8 +256,59 @@ Item {
       heroImg.y = 0
     panIdle.restart()
   }
-  function armPanLater() {
-    panIdle.restart()
+  function bumpIdle() {
+    if (root.cinema)
+      root.exitCinema()
+    idleTimer.restart()
+  }
+  function imageHits() {
+    var out = []
+    var list = root.results || []
+    for (var i = 0; i < list.length; i++) {
+      var hit = list[i]
+      var kind = hit && hit.kind ? String(hit.kind) : Format.kindOf(hit && hit.path ? hit.path : "", false)
+      if (kind === "image" && hit && hit.path)
+        out.push(hit)
+    }
+    return out
+  }
+  function enterCinema() {
+    if (!root.opened || root.pinned || root.cinema) return
+    var hits = root.imageHits()
+    if (!hits.length && !root.shownThumb.length) return
+    root.cinemaSavedIndex = root.selectedIndex
+    root.cinema = true
+    idleTimer.stop()
+    root.slideNext()
+    slideTimer.restart()
+    Qt.callLater(function() { stage.forceActiveFocus() })
+  }
+  function exitCinema() {
+    if (!root.cinema) return
+    root.cinema = false
+    slideTimer.stop()
+    if (root.results && root.cinemaSavedIndex >= 0 && root.cinemaSavedIndex < root.results.length)
+      root.selectIndex(root.cinemaSavedIndex)
+    idleTimer.restart()
+    Qt.callLater(function() { searchField.forceActiveFocus() })
+  }
+  function slideNext() {
+    var hits = root.imageHits()
+    if (!hits.length) return
+    var i = Math.floor(Math.random() * hits.length)
+    if (hits.length > 1 && i === root.cinemaLastPick)
+      i = (i + 1) % hits.length
+    root.cinemaLastPick = i
+    var p = String(hits[i].path || "")
+    if (!p.length) return
+    var list = root.results || []
+    for (var j = 0; j < list.length; j++) {
+      if (list[j] && String(list[j].path || "") === p) {
+        root.selectIndex(j)
+        return
+      }
+    }
+    root.requestPreview(p, 1)
   }
   function selectIndex(i) {
     if (!root.results.length) return
@@ -302,6 +358,7 @@ Item {
   }
   function pinToggle() {
     if (!root.currentHit() && !root.activePath.length) return
+    if (root.cinema) root.exitCinema()
     root.pinned = !root.pinned
     if (root.pinned) {
       root.enableLayerBlur()
@@ -334,6 +391,23 @@ Item {
     interval: 1200
     repeat: false
     onTriggered: root.locFlash = ""
+  }
+  Timer {
+    id: idleTimer
+    interval: 60000
+    repeat: false
+    running: false
+    onTriggered: root.enterCinema()
+  }
+  Timer {
+    id: slideTimer
+    interval: 14000
+    repeat: true
+    running: false
+    onTriggered: {
+      if (root.cinema)
+        root.slideNext()
+    }
   }
   Timer {
     id: panIdle
@@ -375,13 +449,22 @@ Item {
       id: stage
       anchors.fill: parent
       visible: !root.pinned
+      focus: root.cinema
+      Keys.onPressed: function(event) {
+        if (root.cinema) {
+          root.exitCinema()
+          event.accepted = true
+        }
+      }
 
       Item {
         id: hero
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        height: Math.round(parent.height * 0.42)
+        height: root.cinema ? parent.height : Math.round(parent.height * 0.42)
+        z: root.cinema ? 6 : 0
+        Behavior on height { NumberAnimation { duration: 480; easing.type: Easing.InOutCubic } }
 
         Rectangle {
           anchors.fill: parent
@@ -393,6 +476,10 @@ Item {
           anchors.fill: parent
           clip: true
           visible: root.heroImage
+          onHeightChanged: {
+            if (root.cinema && heroImg.status === Image.Ready)
+              panIdle.restart()
+          }
 
           Image {
             id: heroPreload
@@ -437,7 +524,7 @@ Item {
             fillMode: Image.PreserveAspectFit
             asynchronous: true
             cache: true
-            opacity: 0.92
+            opacity: root.cinema ? 1 : 0.92
             sourceSize.width: 2048
             onSourceChanged: {
               heroPan.stop()
@@ -489,6 +576,7 @@ Item {
 
         Rectangle {
           anchors.fill: parent
+          visible: !root.cinema
           gradient: Gradient {
             GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.35) }
             GradientStop { position: 0.45; color: Qt.rgba(0, 0, 0, 0.05) }
@@ -504,6 +592,7 @@ Item {
           anchors.rightMargin: 36
           anchors.bottomMargin: 18
           spacing: 6
+          visible: !root.cinema
 
           Text {
             width: parent.width
@@ -543,6 +632,7 @@ Item {
         color: Qt.rgba(0, 0, 0, 0.55)
         border.width: 1
         border.color: searchField.activeFocus ? root.accent : Qt.rgba(1, 1, 1, 0.16)
+        visible: !root.cinema
         z: 4
 
         Text {
@@ -572,6 +662,12 @@ Item {
           focus: true
           Keys.priority: Keys.BeforeItem
           Keys.onPressed: function(event) {
+            if (root.cinema) {
+              root.exitCinema()
+              event.accepted = true
+              return
+            }
+            root.bumpIdle()
             if (event.key === Qt.Key_Escape) {
               if (root.pinned) root.pinned = false
               else root.close()
@@ -583,7 +679,7 @@ Item {
             else if (event.key === Qt.Key_Space) { root.pinToggle(); event.accepted = true }
             else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.openCurrent(); event.accepted = true }
           }
-          onTextChanged: { root.queryText = text; debounce.restart() }
+          onTextChanged: { root.bumpIdle(); root.queryText = text; debounce.restart() }
         }
       }
 
@@ -597,6 +693,7 @@ Item {
         anchors.rightMargin: 28
         anchors.topMargin: 8
         anchors.bottomMargin: 28
+        visible: !root.cinema
         clip: true
         cellWidth: Math.floor(width / root.columns)
         cellHeight: Math.round(cellWidth * 0.78)
@@ -616,15 +713,15 @@ Item {
             foreground: root.foreground
             accent: root.accent
             homePrefix: root.homePrefix
-            onActivated: root.selectIndex(index)
-            onOpened: { root.selectIndex(index); root.openCurrent() }
+            onActivated: { root.bumpIdle(); root.selectIndex(index) }
+            onOpened: { root.bumpIdle(); root.selectIndex(index); root.openCurrent() }
           }
         }
       }
 
       Text {
         anchors.centerIn: grid
-        visible: root.results.length === 0 && root.queryText.length > 0
+        visible: root.results.length === 0 && root.queryText.length > 0 && !root.cinema
         text: "no matches"
         textFormat: Text.PlainText
         color: root.foreground
@@ -638,11 +735,23 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottomMargin: 10
         text: Format.displayText(root.diskLabel)
-        visible: root.diskLabel.length > 0
+        visible: root.diskLabel.length > 0 && !root.cinema
         color: root.foreground
         opacity: 0.4
         font.pixelSize: Style.font.caption
         textFormat: Text.PlainText
+      }
+
+      MouseArea {
+        anchors.fill: parent
+        z: root.cinema ? 12 : 1
+        hoverEnabled: true
+        acceptedButtons: root.cinema ? Qt.AllButtons : Qt.NoButton
+        onPressed: function(mouse) {
+          root.bumpIdle()
+          mouse.accepted = root.cinema
+        }
+        onPositionChanged: root.bumpIdle()
       }
     }
 
@@ -668,23 +777,4 @@ Item {
       }
       Text {
         anchors.bottom: parent.bottom
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottomMargin: 16
-        width: parent.width * 0.8
-        text: Format.displayText(root.locFlash.length ? root.locFlash : root.locationLabel)
-        color: root.locFlash.length ? root.accent : root.foreground
-        opacity: root.locFlash.length ? 1 : 0.55
-        font.pixelSize: Style.font.caption
-        elide: Text.ElideMiddle
-        horizontalAlignment: Text.AlignHCenter
-        textFormat: Text.PlainText
-        MouseArea {
-          anchors.fill: parent
-          hoverEnabled: true
-          cursorShape: Qt.PointingHandCursor
-          onClicked: root.copyLocation()
-        }
-      }
-    }
-  }
-}
+        anchors
