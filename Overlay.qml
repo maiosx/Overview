@@ -308,7 +308,7 @@ Item {
   }
   Timer {
     id: panIdle
-    interval: 2200
+    interval: 280
     repeat: false
     onTriggered: {
       if (!root.opened || root.pinned || !root.heroImage) return
@@ -401,23 +401,23 @@ Item {
             id: heroPan
             running: false
             loops: Animation.Infinite
-            PauseAnimation { duration: 800 }
+            PauseAnimation { duration: 250 }
             NumberAnimation {
               target: heroImg
               property: "y"
               to: Math.min(0, heroClip.height - heroImg.height)
-              duration: Math.max(16000, Math.abs(heroClip.height - heroImg.height) * 70)
+              duration: Math.max(7000, Math.abs(heroClip.height - heroImg.height) * 38)
               easing.type: Easing.InOutSine
             }
-            PauseAnimation { duration: 1100 }
+            PauseAnimation { duration: 400 }
             NumberAnimation {
               target: heroImg
               property: "y"
               to: 0
-              duration: Math.max(16000, Math.abs(heroClip.height - heroImg.height) * 70)
+              duration: Math.max(7000, Math.abs(heroClip.height - heroImg.height) * 38)
               easing.type: Easing.InOutSine
             }
-            PauseAnimation { duration: 800 }
+            PauseAnimation { duration: 250 }
           }
         }
 
