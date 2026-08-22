@@ -31,7 +31,6 @@ Item {
     "case \"$home\" in /home/*|/root) ;; *) exit 0 ;; esac; " +
     "if [ -z \"$q\" ] || [ ! -d \"$home\" ]; then exit 0; fi; " +
     "ulimit -t 4 2>/dev/null; ulimit -v 262144 2>/dev/null; " +
-    "trap 'trap - EXIT TERM INT; kill 0 2>/dev/null' EXIT TERM INT; " +
     "inside() { n=0; while IFS= read -r p; do " +
     "  [ -z \"$p\" ] && continue; " +
     "  d=$(dirname \"$p\"); b=$(basename \"$p\"); " +
@@ -56,7 +55,6 @@ Item {
     "home=$(cd \"$start\" 2>/dev/null && pwd -P || printf '%s' \"$start\"); " +
     "case \"$home\" in /home/*|/root) ;; *) exit 0 ;; esac; " +
     "ulimit -t 4 2>/dev/null; ulimit -v 262144 2>/dev/null; " +
-    "trap 'trap - EXIT TERM INT; kill 0 2>/dev/null' EXIT TERM INT; " +
     "inside() { while IFS= read -r p; do " +
     "  [ -z \"$p\" ] && continue; " +
     "  d=$(dirname \"$p\"); b=$(basename \"$p\"); " +
