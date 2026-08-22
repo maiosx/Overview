@@ -1,0 +1,9 @@
+-- Overview keybind snippet for Omarchy / Hyprland.
+-- Default candidates live in js/Binds.js (SUPER + ALT + F / SUPER + ALT + PERIOD).
+-- Super+Shift+P is stock Google Photos — never steal it.
+-- Super+Ctrl+. is Transcode — never steal it.
+--
+-- Paste these lines if you want a hotkey:
+--
+--   o.bind("SUPER + PERIOD", "Overview", "omarchy-shell shell toggle io.github.overview '{}'")
+--   o.bind("SUPER + ALT + PERIOD", "Overview", "omarchy-shell shell toggle io.github.overview '{}'")
