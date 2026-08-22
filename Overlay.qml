@@ -304,16 +304,70 @@ Item {
           color: "#101014"
         }
 
-        Image {
+        Item {
+          id: heroClip
           anchors.fill: parent
+          clip: true
           visible: root.heroImage
-          source: root.heroImage ? Format.fileUrl(root.previewResult.path) : ""
-          fillMode: Image.PreserveAspectCrop
-          horizontalAlignment: Image.AlignHCenter
-          verticalAlignment: Image.AlignTop
-          asynchronous: true
-          cache: true
-          opacity: 0.92
+
+          Image {
+            id: heroImg
+            x: Math.round((heroClip.width - width) / 2)
+            y: 0
+            width: {
+              var sw = sourceSize.width
+              var sh = sourceSize.height
+              if (sw <= 0 || sh <= 0) return heroClip.width
+              var cover = Math.max(heroClip.width / sw, heroClip.height / sh)
+              var minH = heroClip.height * 1.28
+              if (sh * cover < minH)
+                cover = minH / sh
+              return sw * cover
+            }
+            height: {
+              var sw = sourceSize.width
+              var sh = sourceSize.height
+              if (sw <= 0 || sh <= 0) return heroClip.height
+              return width * sh / sw
+            }
+            source: root.heroImage ? Format.fileUrl(root.previewResult.path) : ""
+            fillMode: Image.PreserveAspectFit
+            asynchronous: true
+            cache: true
+            opacity: 0.92
+            onStatusChanged: {
+              y = 0
+              if (status === Image.Ready)
+                heroPan.restart()
+            }
+            onSourceChanged: {
+              y = 0
+              heroPan.restart()
+            }
+          }
+
+          SequentialAnimation {
+            id: heroPan
+            running: root.opened && !root.pinned && root.heroImage && heroImg.status === Image.Ready && heroImg.height > heroClip.height + 4
+            loops: Animation.Infinite
+            PauseAnimation { duration: 800 }
+            NumberAnimation {
+              target: heroImg
+              property: "y"
+              to: Math.min(0, heroClip.height - heroImg.height)
+              duration: Math.max(16000, Math.abs(heroClip.height - heroImg.height) * 70)
+              easing.type: Easing.InOutSine
+            }
+            PauseAnimation { duration: 1100 }
+            NumberAnimation {
+              target: heroImg
+              property: "y"
+              to: 0
+              duration: Math.max(16000, Math.abs(heroClip.height - heroImg.height) * 70)
+              easing.type: Easing.InOutSine
+            }
+            PauseAnimation { duration: 800 }
+          }
         }
 
         PreviewPane {
