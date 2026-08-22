@@ -40,6 +40,8 @@ Item {
   property string locFlash: ""
   readonly property int columns: 3
   property bool panArmed: false
+  property string shownThumb: ""
+  property string pendingThumb: ""
   readonly property string heroPath: {
     var hit = root.currentHit()
     if (hit && hit.path) return String(hit.path)
@@ -63,7 +65,7 @@ Item {
     }
     return ""
   }
-  readonly property bool heroImage: (root.heroKind === "image" || root.heroKind === "video") && root.heroThumb.length > 0
+  readonly property bool heroImage: root.shownThumb.length > 0
   readonly property string locationLabel: {
     var p = String(root.activePath || "")
     if (!p.length) return ""
@@ -98,6 +100,8 @@ Item {
     root.lastQueryRev = -1
     root.previewResult = ({})
     root.activePath = ""
+    root.shownThumb = ""
+    root.pendingThumb = ""
     root.enableLayerBlur()
     root.requestQuery("")
     Qt.callLater(function() { searchField.forceActiveFocus() })
@@ -181,7 +185,6 @@ Item {
       var p = hit && hit.path ? String(hit.path) : ""
       var kind = hit && hit.kind ? String(hit.kind) : Format.kindOf(p, false)
       root.activePath = p
-      root.armPanLater()
       if (hit && hit.path)
         root.requestPreview(p, 1)
     } else {
@@ -205,6 +208,7 @@ Item {
       root.lastPreviewRev = prev
       root.previewResult = snap.preview || {}
       root.previewLoading = false
+      root.queueHero(root.heroThumb)
     }
     if (snap.home) root.homePrefix = String(snap.home)
     if (snap.diskLabel !== undefined) root.diskLabel = String(snap.diskLabel || "")
@@ -218,12 +222,34 @@ Item {
     root.previewLoading = true
     root.callIpc("preview", JSON.stringify({ path: path, page: page || 1 }))
   }
-  function armPanLater() {
-    root.panArmed = false
-    if (typeof heroPan !== "undefined")
-      heroPan.stop()
+  function queueHero(path) {
+    var p = String(path || "")
+    if (!p.length) {
+      if (root.heroKind !== "image" && root.heroKind !== "video") {
+        root.shownThumb = ""
+        root.pendingThumb = ""
+        if (typeof heroPan !== "undefined")
+          heroPan.stop()
+      }
+      return
+    }
+    if (p === root.shownThumb) {
+      root.pendingThumb = ""
+      return
+    }
+    root.pendingThumb = p
+  }
+  function commitHero(path) {
+    var p = String(path || "")
+    if (!p.length) return
+    if (p !== root.pendingThumb && p !== root.heroThumb) return
+    root.shownThumb = p
+    root.pendingThumb = ""
     if (typeof heroImg !== "undefined")
       heroImg.y = 0
+    panIdle.restart()
+  }
+  function armPanLater() {
     panIdle.restart()
   }
   function selectIndex(i) {
@@ -235,7 +261,6 @@ Item {
     var p = hit && hit.path ? String(hit.path) : ""
     var kind = hit && hit.kind ? String(hit.kind) : Format.kindOf(p, false)
     root.activePath = p
-    root.armPanLater()
     if (p.length)
       root.requestPreview(p, 1)
   }
@@ -367,6 +392,25 @@ Item {
           visible: root.heroImage
 
           Image {
+            id: heroPreload
+            width: 1
+            height: 1
+            visible: false
+            asynchronous: true
+            cache: true
+            sourceSize.width: 2048
+            source: root.pendingThumb.length ? Format.fileUrl(root.pendingThumb) : ""
+            onStatusChanged: {
+              if (status === Image.Ready && root.pendingThumb.length)
+                root.commitHero(root.pendingThumb)
+            }
+            onSourceChanged: {
+              if (status === Image.Ready && root.pendingThumb.length)
+                root.commitHero(root.pendingThumb)
+            }
+          }
+
+          Image {
             id: heroImg
             x: Math.round((heroClip.width - width) / 2)
             y: 0
@@ -386,7 +430,7 @@ Item {
               if (sw <= 0 || sh <= 0) return heroClip.height
               return width * sh / sw
             }
-            source: root.heroImage ? (Format.fileUrl(root.heroThumb) + (root.previewResult && root.previewResult.stamp ? ("#" + root.previewResult.stamp) : "")) : ""
+            source: root.shownThumb.length ? Format.fileUrl(root.shownThumb) : ""
             fillMode: Image.PreserveAspectFit
             asynchronous: true
             cache: true
@@ -394,11 +438,8 @@ Item {
             sourceSize.width: 2048
             onSourceChanged: {
               y = 0
-              heroPan.stop()
-              root.panArmed = false
             }
             onStatusChanged: {
-              y = 0
               if (status === Image.Ready && root.opened && !root.pinned)
                 panIdle.restart()
             }
