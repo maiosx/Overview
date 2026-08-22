@@ -31,6 +31,12 @@ Item {
     panIdle.restart()
   }
 
+  onCinemaChanged: {
+    stopPan()
+    if (opened && !pinned && heroImage)
+      panIdle.restart()
+  }
+
   height: cinema ? parent.height : Math.round(parent.height * 0.42)
   z: cinema ? 6 : 0
   Behavior on height { NumberAnimation { duration: 480; easing.type: Easing.InOutCubic } }
@@ -46,7 +52,9 @@ Item {
     clip: true
     visible: hero.heroImage
     onHeightChanged: {
-      if (hero.cinema && heroImg.status === Image.Ready)
+      heroImg.y = 0
+      heroPan.stop()
+      if (heroImg.status === Image.Ready && hero.opened && !hero.pinned)
         panIdle.restart()
     }
 
