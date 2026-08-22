@@ -23,7 +23,7 @@ Item {
     if (preview && preview.text) return Format.previewText(String(preview.text).slice(0, 200000))
     if (preview && preview.hex) return Format.previewText(String(preview.hex).slice(0, 4096))
     if (preview && preview.html)
-      return String(preview.html).replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
+      return String(preview.html).replace(/<[^>]+>/g, "").replace(/</g, "<").replace(/>/g, ">").replace(/&/g, "&")
     return String((preview && preview.label) || "")
   }
   readonly property bool showText: root.kind === "code" || root.kind === "csv" || root.kind === "hex" || root.kind === "zip"
@@ -63,6 +63,7 @@ Item {
       asynchronous: true
       cache: true
       sourceSize.width: 1280
+      sourceSize.height: 1280
     }
 
     VideoOutput {
@@ -136,6 +137,7 @@ Item {
             asynchronous: true
             cache: true
             sourceSize.width: 1600
+            sourceSize.height: 1600
           }
         }
       }
