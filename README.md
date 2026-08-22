@@ -70,7 +70,7 @@ Older versions may have written a bind to `~/.config/hypr/bindings.lua`. Delete 
 
 ## Usage
 
-Click the search icon in the bar. Type to find a file in `$HOME`. Results and a preview expand below the search field.
+Click the search icon in the bar. Overview opens **fullscreen**: a hero preview of the selected file on top, a three-column card grid below. Type to search `$HOME`. Arrow keys move across the grid, Enter opens, Space pins a full-page preview.
 
 ## What renders in 1.0
 

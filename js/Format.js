@@ -3,7 +3,7 @@
 var IMAGE_EXT = { png: 1, jpg: 1, jpeg: 1, webp: 1, svg: 1, gif: 1, bmp: 1 }
 var PDF_EXT = { pdf: 1 }
 var CSV_EXT = { csv: 1, tsv: 1 }
-var CODE_EXT = { rs: 1, js: 1, ts: 1, py: 1, go: 1, md: 1, qml: 1, json: 1, sh: 1, lua: 1, txt: 1 }
+var CODE_EXT = { rs: 1, js: 1, ts: 1, py: 1, go: 1, md: 1, qml: 1, json: 1, sh: 1, lua: 1, txt: 1, toml: 1, yml: 1, yaml: 1, css: 1, html: 1, c: 1, h: 1, cpp: 1 }
 
 function extOf(path) {
   var s = String(path || "")
@@ -39,6 +39,30 @@ function glyphFor(kind) {
   if (kind === "code") return "⌘"
   if (kind === "dir") return "▢"
   return "⬡"
+}
+function kindLabel(kind) {
+  if (kind === "image") return "Image"
+  if (kind === "pdf") return "PDF"
+  if (kind === "csv") return "Table"
+  if (kind === "code") return "Code"
+  if (kind === "dir") return "Folder"
+  if (kind === "video") return "Video"
+  return "File"
+}
+function kindTint(kind) {
+  if (kind === "image") return "#3d2a4a"
+  if (kind === "pdf") return "#3a221c"
+  if (kind === "csv") return "#1c3328"
+  if (kind === "code") return "#1c2a3d"
+  if (kind === "dir") return "#2a2a20"
+  return "#24242c"
+}
+function homeRelative(path, home) {
+  var p = String(path || "")
+  var h = String(home || "")
+  if (h.length && (p === h || p.indexOf(h + "/") === 0))
+    return "~" + p.slice(h.length)
+  return p
 }
 function fileUrl(path) {
   var s = String(path || "")

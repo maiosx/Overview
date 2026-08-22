@@ -33,12 +33,14 @@ Item {
   property var borderSpec: Border.surfaceSpec("menu", "border", border, Math.max(1, Style.space(2)))
   readonly property int cornerRadius: Style.cornerRadius
   property string fontFamily: Style.font.menuFamily
-  readonly property bool compact: root.queryText.length === 0
   property string diskLabel: ""
   property real diskUsedFrac: 0
   property string homePrefix: ""
   property string activePath: ""
   property string locFlash: ""
+  readonly property int columns: 3
+  readonly property string heroKind: String(root.previewResult && root.previewResult.kind ? root.previewResult.kind : "")
+  readonly property bool heroImage: root.heroKind === "image" && String(root.previewResult.path || "").length > 0
   readonly property string locationLabel: {
     var p = String(root.activePath || "")
     if (!p.length) return ""
@@ -47,6 +49,11 @@ Item {
     var home = String(root.homePrefix || Quickshell.env("HOME") || "")
     if (home.length && dir.indexOf(home) === 0) dir = "~" + dir.slice(home.length)
     return dir.length ? dir : "/"
+  }
+  readonly property string heroTitle: {
+    var hit = root.currentHit()
+    if (hit && hit.name) return String(hit.name)
+    return Format.basename(root.activePath)
   }
 
   function serviceRef() {
@@ -69,6 +76,7 @@ Item {
     root.previewResult = ({})
     root.activePath = ""
     root.enableLayerBlur()
+    root.requestQuery("")
     Qt.callLater(function() { searchField.forceActiveFocus() })
   }
   function close() { root.opened = false; root.pinned = false }
@@ -174,7 +182,6 @@ Item {
     if (snap.diskUsedFrac !== undefined) root.diskUsedFrac = Number(snap.diskUsedFrac) || 0
   }
   function requestQuery(q) {
-    if (!String(q || "").length) { root.results = []; root.previewResult = ({}); return }
     root.callIpc("query", q)
   }
   function requestPreview(path, page) {
@@ -188,6 +195,14 @@ Item {
     if (i >= root.results.length) i = root.results.length - 1
     root.selectedIndex = i
     root.requestPreview(root.results[i].path, 1)
+  }
+  function moveSelection(dx, dy) {
+    if (!root.results.length) return
+    var cols = root.columns
+    var i = root.selectedIndex
+    if (dx !== 0) i += dx
+    if (dy !== 0) i += dy * cols
+    root.selectIndex(i)
   }
   function launchFile(path) {
     var p = String(path || "")
@@ -268,142 +283,214 @@ Item {
 
     Rectangle {
       anchors.fill: parent
-      color: root.scrim
+      color: Qt.rgba(root.background.r, root.background.g, root.background.b, 0.94)
       visible: !root.pinned
-      MouseArea { anchors.fill: parent; onClicked: root.close() }
     }
 
-    BorderSurface {
+    Item {
+      id: stage
+      anchors.fill: parent
       visible: !root.pinned
-      width: Math.min(Style.space(root.compact ? 720 : 1120), parent.width - Style.gapsOut * 2)
-      height: root.compact
-        ? Style.space(140)
-        : Math.min(Style.space(680), parent.height - Style.gapsOut * 2)
-      radius: root.cornerRadius
-      anchors.centerIn: parent
-      color: root.background
-      borderSpec: root.borderSpec
-      MouseArea { anchors.fill: parent; onClicked: {} }
-      Column {
-        anchors.fill: parent
-        anchors.margins: Style.spacing.panelPadding
-        spacing: Style.spacing.md
+
+      Item {
+        id: hero
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: Math.round(parent.height * 0.42)
+
         Rectangle {
-          width: parent.width
-          height: Style.space(48)
-          radius: 10
-          border.color: searchField.activeFocus ? root.accent : root.border
-          border.width: 1
-          color: "transparent"
-          Text {
-            anchors.fill: parent
-            anchors.margins: 14
-            text: "Search"
-            visible: searchField.text.length === 0
-            color: root.foreground
-            opacity: 0.35
-            font.pixelSize: Style.font.title
-            verticalAlignment: Text.AlignVCenter
-          }
-          TextInput {
-            id: searchField
-            anchors.fill: parent
-            anchors.margins: 14
-            color: root.foreground
-            font.pixelSize: Style.font.title
-            clip: true
-            focus: true
-            Keys.priority: Keys.BeforeItem
-            Keys.onPressed: function(event) {
-              if (event.key === Qt.Key_Escape) {
-                if (root.pinned) root.pinned = false
-                else root.close()
-                event.accepted = true
-              } else if (event.key === Qt.Key_Down) { root.selectIndex(root.selectedIndex + 1); event.accepted = true }
-              else if (event.key === Qt.Key_Up) { root.selectIndex(root.selectedIndex - 1); event.accepted = true }
-              else if (event.key === Qt.Key_Space) { root.pinToggle(); event.accepted = true }
-              else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.openCurrent(); event.accepted = true }
-            }
-            onTextChanged: { root.queryText = text; debounce.restart() }
+          anchors.fill: parent
+          color: "#101014"
+        }
+
+        Image {
+          anchors.fill: parent
+          visible: root.heroImage
+          source: root.heroImage ? Format.fileUrl(root.previewResult.path) : ""
+          fillMode: Image.PreserveAspectCrop
+          asynchronous: true
+          cache: true
+          opacity: 0.92
+        }
+
+        PreviewPane {
+          anchors.fill: parent
+          visible: !root.heroImage && root.heroKind.length > 0 && root.heroKind !== "image"
+          preview: root.previewResult
+          loading: root.previewLoading
+          foreground: root.foreground
+          accent: root.accent
+          selectable: false
+        }
+
+        Rectangle {
+          anchors.fill: parent
+          gradient: Gradient {
+            GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.35) }
+            GradientStop { position: 0.45; color: Qt.rgba(0, 0, 0, 0.05) }
+            GradientStop { position: 1.0; color: Qt.rgba(root.background.r, root.background.g, root.background.b, 0.96) }
           }
         }
-        Row {
-          width: parent.width
-          height: parent.height - Style.space(108)
-          spacing: 12
-          visible: !root.compact
-          ListView {
-            id: resultsView
-            width: parent.width * 0.36
-            height: parent.height
-            clip: true
-            model: root.results
-            currentIndex: root.selectedIndex
-            delegate: Rectangle {
-              required property int index
-              required property var modelData
-              width: ListView.view.width
-              height: 44
-              radius: 6
-              color: index === root.selectedIndex ? root.accent : "transparent"
-              Text {
-                anchors.fill: parent
-                anchors.margins: 8
-                text: Format.glyphFor(modelData.kind) + "  " + modelData.name
-                color: root.foreground
-                elide: Text.ElideMiddle
-                verticalAlignment: Text.AlignVCenter
-              }
-              MouseArea { anchors.fill: parent; onClicked: root.selectIndex(index); onDoubleClicked: root.openCurrent() }
-            }
-            Text {
-              anchors.centerIn: parent
-              visible: root.results.length === 0
-              text: "no matches"
-              color: root.foreground
-              opacity: 0.45
+
+        Rectangle {
+          width: 78
+          height: 78
+          radius: 39
+          anchors.centerIn: parent
+          visible: root.heroTitle.length > 0
+          color: Qt.rgba(0.85, 0.08, 0.12, 0.92)
+          MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.openCurrent()
+          }
+          Text {
+            anchors.centerIn: parent
+            text: "▶"
+            color: "white"
+            font.pixelSize: 28
+            leftPadding: 4
+          }
+        }
+
+        Column {
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.bottom: parent.bottom
+          anchors.leftMargin: 36
+          anchors.rightMargin: 36
+          anchors.bottomMargin: 18
+          spacing: 6
+
+          Text {
+            width: parent.width
+            text: root.heroTitle
+            visible: root.heroTitle.length > 0
+            color: "white"
+            font.pixelSize: Style.font.title
+            font.weight: Font.DemiBold
+            elide: Text.ElideMiddle
+          }
+          Text {
+            width: parent.width
+            text: root.locFlash.length ? root.locFlash : root.locationLabel
+            visible: root.locationLabel.length > 0
+            color: root.locFlash.length ? root.accent : Qt.rgba(1, 1, 1, 0.65)
+            font.pixelSize: Style.font.caption
+            elide: Text.ElideMiddle
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.copyLocation()
             }
           }
-          PreviewPane {
-            width: parent.width * 0.64 - 12
-            height: parent.height
-            preview: root.previewResult
-            loading: root.previewLoading
+        }
+      }
+
+      Rectangle {
+        id: searchBar
+        anchors.top: parent.top
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.topMargin: 22
+        width: Math.min(parent.width - 72, 720)
+        height: 48
+        radius: 24
+        color: Qt.rgba(0, 0, 0, 0.55)
+        border.width: 1
+        border.color: searchField.activeFocus ? root.accent : Qt.rgba(1, 1, 1, 0.16)
+        z: 4
+
+        Text {
+          anchors.fill: parent
+          anchors.leftMargin: 22
+          anchors.rightMargin: 22
+          text: "Search files"
+          visible: searchField.text.length === 0
+          color: Qt.rgba(1, 1, 1, 0.38)
+          font.pixelSize: Style.font.body
+          verticalAlignment: Text.AlignVCenter
+        }
+        TextInput {
+          id: searchField
+          anchors.fill: parent
+          anchors.leftMargin: 22
+          anchors.rightMargin: 22
+          color: "white"
+          font.pixelSize: Style.font.body
+          clip: true
+          focus: true
+          Keys.priority: Keys.BeforeItem
+          Keys.onPressed: function(event) {
+            if (event.key === Qt.Key_Escape) {
+              if (root.pinned) root.pinned = false
+              else root.close()
+              event.accepted = true
+            } else if (event.key === Qt.Key_Down) { root.moveSelection(0, 1); event.accepted = true }
+            else if (event.key === Qt.Key_Up) { root.moveSelection(0, -1); event.accepted = true }
+            else if (event.key === Qt.Key_Right) { root.moveSelection(1, 0); event.accepted = true }
+            else if (event.key === Qt.Key_Left) { root.moveSelection(-1, 0); event.accepted = true }
+            else if (event.key === Qt.Key_Space) { root.pinToggle(); event.accepted = true }
+            else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.openCurrent(); event.accepted = true }
+          }
+          onTextChanged: { root.queryText = text; debounce.restart() }
+        }
+      }
+
+      GridView {
+        id: grid
+        anchors.top: hero.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: 28
+        anchors.rightMargin: 28
+        anchors.topMargin: 8
+        anchors.bottomMargin: 28
+        clip: true
+        cellWidth: Math.floor(width / root.columns)
+        cellHeight: Math.round(cellWidth * 0.78)
+        model: root.results
+        currentIndex: root.selectedIndex
+        boundsBehavior: Flickable.StopAtBounds
+        delegate: Item {
+          required property int index
+          required property var modelData
+          width: grid.cellWidth
+          height: grid.cellHeight
+          FileCard {
+            anchors.fill: parent
+            anchors.margins: 10
+            hit: modelData
+            selected: index === root.selectedIndex
             foreground: root.foreground
             accent: root.accent
+            homePrefix: root.homePrefix
+            onActivated: root.selectIndex(index)
+            onOpened: { root.selectIndex(index); root.openCurrent() }
           }
         }
-        Column {
-          width: parent.width
-          spacing: 6
-          Item {
-            width: parent.width
-            height: 6
-            Rectangle {
-              anchors.horizontalCenter: parent.horizontalCenter
-              width: Math.min(parent.width * 0.42, 280)
-              height: 6
-              radius: 3
-              color: root.border
-              visible: root.diskLabel.length > 0
-              Rectangle {
-                width: parent.width * Math.min(1, Math.max(0, root.diskUsedFrac))
-                height: parent.height
-                radius: 3
-                color: root.diskUsedFrac > 0.9 ? "#f7768e" : root.accent
-              }
-            }
-          }
-          Text {
-            width: parent.width
-            horizontalAlignment: Text.AlignHCenter
-            text: root.diskLabel
-            visible: root.diskLabel.length > 0
-            color: root.foreground
-            opacity: 0.55
-            font.pixelSize: Style.font.caption
-          }
-        }
+      }
+
+      Text {
+        anchors.centerIn: grid
+        visible: root.results.length === 0 && root.queryText.length > 0
+        text: "no matches"
+        color: root.foreground
+        opacity: 0.45
+        font.pixelSize: Style.font.title
+        z: 2
+      }
+
+      Text {
+        anchors.bottom: parent.bottom
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.bottomMargin: 10
+        text: root.diskLabel
+        visible: root.diskLabel.length > 0
+        color: root.foreground
+        opacity: 0.4
+        font.pixelSize: Style.font.caption
       }
     }
 
@@ -411,23 +498,15 @@ Item {
       id: pinnedPane
       anchors.fill: parent
       visible: root.pinned
-      color: "transparent"
+      color: Qt.rgba(root.background.r, root.background.g, root.background.b, 0.72)
       focus: root.pinned
       Keys.onPressed: function(event) {
         if (event.key === Qt.Key_Escape || event.key === Qt.Key_Space) { root.pinToggle(); event.accepted = true }
         else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.revealCurrent(); event.accepted = true }
       }
-      Rectangle {
-        id: blurLayer
-        anchors.fill: parent
-        color: Qt.rgba(root.background.r, root.background.g, root.background.b, 0.55)
-      }
       PreviewPane {
         anchors.fill: parent
-        anchors.leftMargin: 28
-        anchors.rightMargin: 28
-        anchors.topMargin: 28
-        anchors.bottomMargin: 48
+        anchors.margins: 36
         preview: root.previewResult
         loading: root.previewLoading
         foreground: root.foreground

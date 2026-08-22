@@ -37,7 +37,7 @@ Item {
     "done; }; " +
     "fd_bin=$(command -v fd || command -v fdfind || true); " +
     "if [ -n \"$fd_bin\" ]; then " +
-    "  \"$fd_bin\" -a -i -F -t f --one-file-system --max-results 80 --max-depth 8 " +
+    "  \"$fd_bin\" -a -i -F -t f --one-file-system --max-results 24 --max-depth 8 " +
     "    -E node_modules -E .git -E dist -E target -E __pycache__ -E .venv -E venv " +
     "    -E .cache -E .local -E .npm -E .cargo -E .flatpak " +
     "    -- \"$q\" \"$home\" 2>/dev/null | inside; " +
@@ -45,7 +45,26 @@ Item {
     "fi; " +
     "find -P \"$home\" -xdev -maxdepth 8 " +
     "  \\( -name node_modules -o -name .git -o -name dist -o -name target -o -name .venv -o -name .cache -o -name .local \\) -prune " +
-    "  -o -type f -iname \"*$q*\" -print 2>/dev/null | inside | head -n 50"
+    "  -o -type f -iname \"*$q*\" -print 2>/dev/null | inside | head -n 24"
+
+  readonly property string recentBody: "start=\"$1\"; " +
+    "home=$(cd \"$start\" 2>/dev/null && pwd -P || printf '%s' \"$start\"); " +
+    "case \"$home\" in /home/*|/root) ;; *) exit 0 ;; esac; " +
+    "inside() { while IFS= read -r p; do " +
+    "  [ -z \"$p\" ] && continue; " +
+    "  d=$(dirname \"$p\"); b=$(basename \"$p\"); " +
+    "  rp=$(cd \"$d\" 2>/dev/null && printf '%s/%s\\n' \"$(pwd -P)\" \"$b\" || printf '%s\\n' \"$p\"); " +
+    "  case \"$rp\" in \"$home\"|\"$home\"/*) printf '%s\\n' \"$rp\" ;; esac; " +
+    "done; }; " +
+    "fd_bin=$(command -v fd || command -v fdfind || true); " +
+    "if [ -n \"$fd_bin\" ]; then " +
+    "  \"$fd_bin\" -a -t f --one-file-system --changed-within 30d --max-results 24 --max-depth 6 " +
+    "    -E node_modules -E .git -E dist -E target -E __pycache__ -E .venv -E venv " +
+    "    -E .cache -E .local -E .npm -E .cargo -E .flatpak " +
+    "    . \"$home\" 2>/dev/null | inside; " +
+    "  exit 0; " +
+    "fi; " +
+    "find -P \"$home\" -xdev -maxdepth 3 -type f -printf '%T@ %p\\n' 2>/dev/null | sort -nr | head -n 24 | cut -d' ' -f2- | inside"
 
   readonly property string readBody: "head -c 200000 \"$1\""
 
@@ -70,7 +89,7 @@ Item {
     var lines = String(text || "").split(/\r?\n/)
     var hits = []
     var seen = ({})
-    for (var i = 0; i < lines.length && hits.length < 40; i++) {
+    for (var i = 0; i < lines.length && hits.length < 24; i++) {
       var p = String(lines[i] || "").replace(/^\s+|\s+$/g, "").replace(/^'+|'+$/g, "")
       if (!p.length || p.charAt(0) !== "/") continue
       if (!root.underHome(p)) continue
@@ -119,20 +138,18 @@ Item {
   function sanitize(q) { return String(q || "").replace(/[*?[\]\\'"]/g, "") }
   function query(q) {
     root.searchNeedle = root.sanitize(q)
-    if (!root.searchNeedle.length) {
-      root.lastResults = []
-      root.backend = "idle"
-      root.resultsRevision += 1
-      root.lastStatus = "idle"
-      root.searchRunning = false
-      return String(root.resultsRevision)
-    }
     Qt.callLater(root.startSearch)
     return String(root.resultsRevision + 1)
   }
   function startSearch() {
     if (searchProc.running) { searchProc.running = false; Qt.callLater(root.startSearch); return }
-    searchProc.command = ["sh", "-c", root.searchBody, "overview-search", root.searchNeedle, root.home]
+    if (!root.searchNeedle.length) {
+      searchProc.command = ["sh", "-c", root.recentBody, "overview-recent", root.home]
+      root.backend = "recent"
+    } else {
+      searchProc.command = ["sh", "-c", root.searchBody, "overview-search", root.searchNeedle, root.home]
+      root.backend = "search"
+    }
     searchProc.running = true
     root.searchRunning = true
     root.lastStatus = "searching"
