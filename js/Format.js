@@ -80,6 +80,16 @@ function localPreview(path) {
   if (kind === "image") return { kind: "image", path: p, animated: extOf(p) === "gif" }
   return { kind: kind, path: p, label: kind, hex: "" }
 }
+function displayText(s) {
+  var t = String(s || "")
+  var out = ""
+  for (var i = 0; i < t.length && i < 512; i++) {
+    var c = t.charCodeAt(i)
+    if (c < 32 || c === 127) continue
+    out += t.charAt(i)
+  }
+  return out
+}
 function humanSize(n) {
   var v = Number(n) || 0
   if (v < 1024) return v + " B"

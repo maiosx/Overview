@@ -367,8 +367,8 @@ Item {
             x: Math.round((heroClip.width - width) / 2)
             y: 0
             width: {
-              var sw = sourceSize.width
-              var sh = sourceSize.height
+              var sw = implicitWidth
+              var sh = implicitHeight
               if (sw <= 0 || sh <= 0) return heroClip.width
               var cover = Math.max(heroClip.width / sw, heroClip.height / sh)
               var minH = heroClip.height * 1.28
@@ -377,8 +377,8 @@ Item {
               return sw * cover
             }
             height: {
-              var sw = sourceSize.width
-              var sh = sourceSize.height
+              var sw = implicitWidth
+              var sh = implicitHeight
               if (sw <= 0 || sh <= 0) return heroClip.height
               return width * sh / sw
             }
@@ -387,6 +387,7 @@ Item {
             asynchronous: true
             cache: true
             opacity: 0.92
+            sourceSize.width: 4472
             onSourceChanged: {
               y = 0
               heroPan.stop()
@@ -451,20 +452,22 @@ Item {
 
           Text {
             width: parent.width
-            text: root.heroTitle
+            text: Format.displayText(root.heroTitle)
             visible: root.heroTitle.length > 0
             color: "white"
             font.pixelSize: Style.font.title
             font.weight: Font.DemiBold
             elide: Text.ElideMiddle
+            textFormat: Text.PlainText
           }
           Text {
             width: parent.width
-            text: root.locFlash.length ? root.locFlash : root.locationLabel
+            text: Format.displayText(root.locFlash.length ? root.locFlash : root.locationLabel)
             visible: root.locationLabel.length > 0
             color: root.locFlash.length ? root.accent : Qt.rgba(1, 1, 1, 0.65)
             font.pixelSize: Style.font.caption
             elide: Text.ElideMiddle
+            textFormat: Text.PlainText
             MouseArea {
               anchors.fill: parent
               cursorShape: Qt.PointingHandCursor
@@ -497,6 +500,7 @@ Item {
           font.pixelSize: 15
           verticalAlignment: Text.AlignVCenter
           elide: Text.ElideRight
+          textFormat: Text.PlainText
         }
         TextInput {
           id: searchField
@@ -567,6 +571,7 @@ Item {
         anchors.centerIn: grid
         visible: root.results.length === 0 && root.queryText.length > 0
         text: "no matches"
+        textFormat: Text.PlainText
         color: root.foreground
         opacity: 0.45
         font.pixelSize: Style.font.title
@@ -577,11 +582,12 @@ Item {
         anchors.bottom: parent.bottom
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottomMargin: 10
-        text: root.diskLabel
+        text: Format.displayText(root.diskLabel)
         visible: root.diskLabel.length > 0
         color: root.foreground
         opacity: 0.4
         font.pixelSize: Style.font.caption
+        textFormat: Text.PlainText
       }
     }
 
@@ -609,12 +615,13 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottomMargin: 16
         width: parent.width * 0.8
-        text: root.locFlash.length ? root.locFlash : root.locationLabel
+        text: Format.displayText(root.locFlash.length ? root.locFlash : root.locationLabel)
         color: root.locFlash.length ? root.accent : root.foreground
         opacity: root.locFlash.length ? 1 : 0.55
         font.pixelSize: Style.font.caption
         elide: Text.ElideMiddle
         horizontalAlignment: Text.AlignHCenter
+        textFormat: Text.PlainText
         MouseArea {
           anchors.fill: parent
           hoverEnabled: true

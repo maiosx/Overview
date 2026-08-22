@@ -48,6 +48,7 @@ Item {
           asynchronous: true
           cache: true
           smooth: true
+          sourceSize.width: 640
         }
 
         Text {
@@ -57,6 +58,7 @@ Item {
           color: root.foreground
           opacity: 0.7
           font.pixelSize: 36
+          textFormat: Text.PlainText
         }
 
         Rectangle {
@@ -73,6 +75,7 @@ Item {
             text: Format.kindLabel(root.kind)
             color: "white"
             font.pixelSize: 11
+            textFormat: Text.PlainText
           }
         }
       }
@@ -91,19 +94,21 @@ Item {
 
           Text {
             width: parent.width
-            text: root.title
+            text: Format.displayText(root.title)
             color: root.foreground
             elide: Text.ElideMiddle
             font.pixelSize: Style.font.body
             font.weight: Font.DemiBold
+            textFormat: Text.PlainText
           }
           Text {
             width: parent.width
-            text: root.folder
+            text: Format.displayText(root.folder)
             color: root.foreground
             opacity: 0.5
             elide: Text.ElideMiddle
             font.pixelSize: Style.font.caption
+            textFormat: Text.PlainText
           }
         }
       }

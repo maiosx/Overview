@@ -70,8 +70,18 @@ Item {
 
   readonly property string pdfBody: "if ! command -v pdftotext >/dev/null 2>&1; then printf '%s\\n' POPPLER_MISSING; exit 0; fi; " +
     "ulimit -t 3 2>/dev/null; ulimit -v 524288 2>/dev/null; ulimit -f 4096 2>/dev/null; " +
-    "if command -v timeout >/dev/null 2>&1; then exec timeout -k 1 4 pdftotext -f 1 -l 1 -layout \"$1\" -; " +
-    "else exec pdftotext -f 1 -l 1 -layout \"$1\" -; fi"
+    "if command -v timeout >/dev/null 2>&1; then timeout -k 1 4 pdftotext -f 1 -l 1 -layout \"$1\" - 2>/dev/null | head -c 200000; " +
+    "else pdftotext -f 1 -l 1 -layout \"$1\" - 2>/dev/null | head -c 200000; fi"
+
+  readonly property string imageBody: "src=\"$1\"; out=\"$2\"; " +
+    "ident=$(command -v identify || true); conv=$(command -v magick || command -v convert || true); " +
+    "if [ -z \"$ident\" ] || [ -z \"$conv\" ]; then printf '%s' \"$src\"; exit 0; fi; " +
+    "px=$(\"$ident\" -ping -format '%[fx:int(w*h)]' \"$src\" 2>/dev/null || printf '0'); " +
+    "case \"$px\" in ''|*[!0-9]*) px=0 ;; esac; " +
+    "if [ \"$px\" -le 20000000 ]; then printf '%s' \"$src\"; exit 0; fi; " +
+    "mkdir -p \"$(dirname \"$out\")\"; " +
+    "\"$conv\" \"$src\" -resize '4472x4472>' \"$out\" 2>/dev/null && [ -f \"$out\" ] && printf '%s' \"$out\" && exit 0; " +
+    "printf '%s' \"$src\""
 
   function underHome(p) {
     var home = String(root.home || "")
@@ -156,9 +166,9 @@ Item {
   }
   function applyTextPreview(raw) {
     var s = String(raw || "")
+    if (s.length > root.previewBytes) s = s.slice(0, root.previewBytes)
     var binary = s.indexOf("\0") >= 0
     var large = s.length >= root.previewBytes
-    if (s.length > root.previewBytes) s = s.slice(0, root.previewBytes)
     if (binary) {
       var hex = ""
       var n = Math.min(s.length, 256)
@@ -186,9 +196,13 @@ Item {
     if (!root.underHome(p)) { root.lastPreview = ({}); root.previewRevision += 1; return "0" }
     var kind = Format.kindOf(p, false)
     if (kind === "image") {
+      if (imageProc.running) imageProc.running = false
+      imageKill.restart()
+      var cache = root.home + "/.cache/overview/img/" + Format.basename(p).replace(/[^A-Za-z0-9._-]/g, "_") + ".jpg"
+      imageProc.command = ["sh", "-c", root.imageBody, "overview-image", p, cache]
+      imageProc.running = true
       root.lastPreview = Format.localPreview(p)
-      root.previewRevision += 1
-      return String(root.previewRevision)
+      return String(root.previewRevision + 1)
     }
     if (kind === "pdf") {
       if (pdfProc.running) pdfProc.running = false
@@ -238,6 +252,31 @@ Item {
       diskUsedFrac: root.diskUsedFrac,
       diskTotal: root.diskTotal
     })
+  }
+  Process {
+    id: imageProc
+    running: false
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        imageKill.stop()
+        var out = String(text || "").replace(/^\s+|\s+$/g, "")
+        if (!out.length || !root.underHome(out) && out.indexOf(root.home + "/.cache/overview/") !== 0)
+          out = root.previewPath
+        var prev = Format.localPreview(root.previewPath)
+        if (out.length && out !== root.previewPath)
+          prev.path = out
+        root.lastPreview = prev
+        root.previewRevision += 1
+      }
+    }
+    onExited: imageKill.stop()
+  }
+  Timer {
+    id: imageKill
+    interval: 8000
+    repeat: false
+    onTriggered: { if (imageProc.running) imageProc.running = false }
   }
   Process {
     id: textProc

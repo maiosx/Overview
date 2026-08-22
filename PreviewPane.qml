@@ -18,8 +18,8 @@ Item {
   property bool selectable: true
   readonly property string kind: String(preview && preview.kind ? preview.kind : "")
   readonly property string bodyText: {
-    if (preview && preview.text) return String(preview.text)
-    if (preview && preview.hex) return String(preview.hex)
+    if (preview && preview.text) return Format.displayText(String(preview.text).slice(0, 200000))
+    if (preview && preview.hex) return Format.displayText(String(preview.hex).slice(0, 4096))
     if (preview && preview.html)
       return String(preview.html).replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
     return String((preview && preview.label) || "")
@@ -34,6 +34,7 @@ Item {
       anchors.centerIn: parent
       visible: root.loading && root.kind === ""
       text: "rendering…"
+      textFormat: Text.PlainText
       color: root.foreground
       opacity: 0.7
     }
@@ -46,6 +47,7 @@ Item {
       fillMode: Image.PreserveAspectFit
       asynchronous: true
       cache: false
+      sourceSize.width: 4472
     }
 
     Flickable {
@@ -119,6 +121,7 @@ Item {
       width: parent.width - 40
       visible: root.kind === "pdf" && preview.need_poppler
       text: "install poppler for PDF text\npacman -S poppler"
+      textFormat: Text.PlainText
       color: root.foreground
       wrapMode: Text.WordWrap
       horizontalAlignment: Text.AlignHCenter
@@ -128,6 +131,7 @@ Item {
       anchors.centerIn: parent
       visible: !root.loading && root.kind === ""
       text: "select a file"
+      textFormat: Text.PlainText
       color: root.foreground
       opacity: 0.45
     }
