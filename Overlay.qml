@@ -45,78 +45,33 @@ Item {
   property bool cinema: false
   property int cinemaSavedIndex: 0
   property int cinemaLastPick: -1
-  readonly property string heroPath: {
-    var hit = root.currentHit()
-    if (hit && hit.path) return String(hit.path)
-    return String(root.activePath || "")
-  }
-  readonly property string heroKind: {
-    var hit = root.currentHit()
-    if (hit && hit.kind) return String(hit.kind)
-    if (hit && hit.path) return Format.kindOf(hit.path, false)
-    return String(root.previewResult && root.previewResult.kind ? root.previewResult.kind : "")
-  }
-  readonly property string heroThumb: {
-    if (root.heroKind === "image") {
-      if (root.previewResult && root.previewResult.blocked) return ""
-      return String(root.previewResult && root.previewResult.path ? root.previewResult.path : "")
-    }
-    if (root.heroKind === "video") {
-      var t = String(root.previewResult && root.previewResult.thumb ? root.previewResult.thumb : "")
-      if (t.length) return t
-      return Format.videoThumbPath(root.heroPath, root.homePrefix || Quickshell.env("HOME") || "")
-    }
-    return ""
-  }
-  readonly property bool heroImage: root.shownThumb.length > 0
-  readonly property string locationLabel: {
-    var p = String(root.activePath || "")
-    if (!p.length) return ""
-    var slash = p.lastIndexOf("/")
-    var dir = slash > 0 ? p.slice(0, slash) : p
-    var home = String(root.homePrefix || Quickshell.env("HOME") || "")
-    if (home.length && dir.indexOf(home) === 0) dir = "~" + dir.slice(home.length)
-    return dir.length ? dir : "/"
-  }
-  readonly property string heroTitle: {
-    var hit = root.currentHit()
-    if (hit && hit.name) return String(hit.name)
-    return Format.basename(root.activePath)
-  }
-
-  function serviceRef() {
-    try {
-      if (root.pluginRegistry && typeof root.pluginRegistry.serviceFor === "function") {
-        var s = root.pluginRegistry.serviceFor(root.pluginId)
-        if (s && s !== root) return s
-      }
-    } catch (e) {}
-    return null
-  }
-
   function open(payloadJson) {
     root.opened = true
     root.pinned = false
+    root.cinema = false
     root.queryText = ""
-    searchField.text = ""
+    if (typeof searchField !== 'undefined') searchField.text = ""
     root.results = []
     root.lastQueryRev = -1
     root.previewResult = ({})
     root.activePath = ""
     root.shownThumb = ""
     root.pendingThumb = ""
-    root.cinema = false
     root.enableLayerBlur()
     root.requestQuery("")
     idleTimer.restart()
-    Qt.callLater(function() { searchField.forceActiveFocus() })
+    Qt.callLater(function() { if (typeof searchField !== 'undefined') searchField.forceActiveFocus() })
   }
   function close() { root.opened = false; root.pinned = false; root.cinema = false; idleTimer.stop(); slideTimer.stop() }
   function toggle() { if (root.opened) root.close(); else root.open("{}") }
   function query(arg) { return root.callIpc("query", arg) }
   function snapshot(arg) { return root.callIpc("snapshot", arg) }
   function preview(arg) { return root.callIpc("preview", arg) }
-
+  function enableLayerBlur() {
+    Quickshell.execDetached(["hyprctl", "keyword", "layerrule", "blur,overview"])
+    Quickshell.execDetached(["hyprctl", "keyword", "layerrule", "ignorealpha 0,overview"])
+    Quickshell.execDetached(["hyprctl", "keyword", "layerrule", "xray 0,overview"])
+  }
   function currentHit() {
     if (!root.results || root.selectedIndex < 0 || root.selectedIndex >= root.results.length) return null
     return root.results[root.selectedIndex]
@@ -126,34 +81,15 @@ Item {
     var hit = root.currentHit()
     return hit && hit.path ? String(hit.path) : ""
   }
-  function locationPath() {
-    var p = String(root.activePath || "")
-    if (!p.length) return ""
-    var slash = p.lastIndexOf("/")
-    return slash > 0 ? p.slice(0, slash) : p
-  }
-  function copyText(s) {
-    var t = String(s || "")
-    if (!t.length) return
-    try { Quickshell.clipboardText = t } catch (e) {}
-    Quickshell.execDetached(["wl-copy", "--", t])
-  }
-  function copyLocation() {
-    var p = root.locationPath()
-    if (!p.length) return
-    root.copyText(p)
-    root.locFlash = "copied"
-    locFlashTimer.restart()
-  }
-  function enableLayerBlur() {
-    Quickshell.execDetached(["hyprctl", "keyword", "layerrule", "blur,overview"])
-    Quickshell.execDetached(["hyprctl", "keyword", "layerrule", "ignorealpha 0,overview"])
-    Quickshell.execDetached(["hyprctl", "keyword", "layerrule", "xray 0,overview"])
-  }
-
   function callIpc(method, arg) {
     var job = { method: String(method || ""), arg: arg === undefined || arg === null ? "" : String(arg) }
-    var svc = root.serviceRef()
+    var svc = null
+    try {
+      if (root.pluginRegistry && typeof root.pluginRegistry.serviceFor === "function") {
+        svc = root.pluginRegistry.serviceFor(root.pluginId)
+        if (svc === root) svc = null
+      }
+    } catch (e) { svc = null }
     if (svc && typeof svc[job.method] === "function") {
       var result = svc[job.method](job.arg)
       if (job.method === "snapshot") root.applySnapshot(result)
@@ -188,10 +124,8 @@ Item {
       if (root.selectedIndex >= next.length) root.selectedIndex = 0
       var hit = next[root.selectedIndex]
       var p = hit && hit.path ? String(hit.path) : ""
-      var kind = hit && hit.kind ? String(hit.kind) : Format.kindOf(p, false)
       root.activePath = p
-      if (hit && hit.path)
-        root.requestPreview(p, 1)
+      if (p.length) root.requestPreview(p, 1)
     } else {
       root.previewResult = ({})
       root.activePath = ""
@@ -213,102 +147,15 @@ Item {
       root.lastPreviewRev = prev
       root.previewResult = snap.preview || {}
       root.previewLoading = false
-      root.queueHero(root.heroThumb)
     }
     if (snap.home) root.homePrefix = String(snap.home)
     if (snap.diskLabel !== undefined) root.diskLabel = String(snap.diskLabel || "")
-    if (snap.diskUsedFrac !== undefined) root.diskUsedFrac = Number(snap.diskUsedFrac) || 0
   }
-  function requestQuery(q) {
-    root.callIpc("query", q)
-  }
+  function requestQuery(q) { root.callIpc("query", q) }
   function requestPreview(path, page) {
     root.activePath = String(path || "")
     root.previewLoading = true
     root.callIpc("preview", JSON.stringify({ path: path, page: page || 1 }))
-  }
-  function queueHero(path) {
-    var p = String(path || "")
-    if (!p.length) {
-      if (root.heroKind !== "image" && root.heroKind !== "video") {
-        root.shownThumb = ""
-        root.pendingThumb = ""
-        if (typeof heroPan !== "undefined")
-          heroPan.stop()
-      }
-      return
-    }
-    if (p === root.shownThumb) {
-      root.pendingThumb = ""
-      return
-    }
-    root.pendingThumb = p
-  }
-  function commitHero(path) {
-    var p = String(path || "")
-    if (!p.length) return
-    if (p !== root.pendingThumb && p !== root.heroThumb) return
-    if (typeof heroPan !== "undefined")
-      heroPan.stop()
-    root.shownThumb = p
-    root.pendingThumb = ""
-    if (typeof heroImg !== "undefined")
-      heroImg.y = 0
-    panIdle.restart()
-  }
-  function bumpIdle() {
-    if (root.cinema)
-      root.exitCinema()
-    idleTimer.restart()
-  }
-  function imageHits() {
-    var out = []
-    var list = root.results || []
-    for (var i = 0; i < list.length; i++) {
-      var hit = list[i]
-      var kind = hit && hit.kind ? String(hit.kind) : Format.kindOf(hit && hit.path ? hit.path : "", false)
-      if (kind === "image" && hit && hit.path)
-        out.push(hit)
-    }
-    return out
-  }
-  function enterCinema() {
-    if (!root.opened || root.pinned || root.cinema) return
-    var hits = root.imageHits()
-    if (!hits.length && !root.shownThumb.length) return
-    root.cinemaSavedIndex = root.selectedIndex
-    root.cinema = true
-    idleTimer.stop()
-    root.slideNext()
-    slideTimer.restart()
-    Qt.callLater(function() { stage.forceActiveFocus() })
-  }
-  function exitCinema() {
-    if (!root.cinema) return
-    root.cinema = false
-    slideTimer.stop()
-    if (root.results && root.cinemaSavedIndex >= 0 && root.cinemaSavedIndex < root.results.length)
-      root.selectIndex(root.cinemaSavedIndex)
-    idleTimer.restart()
-    Qt.callLater(function() { searchField.forceActiveFocus() })
-  }
-  function slideNext() {
-    var hits = root.imageHits()
-    if (!hits.length) return
-    var i = Math.floor(Math.random() * hits.length)
-    if (hits.length > 1 && i === root.cinemaLastPick)
-      i = (i + 1) % hits.length
-    root.cinemaLastPick = i
-    var p = String(hits[i].path || "")
-    if (!p.length) return
-    var list = root.results || []
-    for (var j = 0; j < list.length; j++) {
-      if (list[j] && String(list[j].path || "") === p) {
-        root.selectIndex(j)
-        return
-      }
-    }
-    root.requestPreview(p, 1)
   }
   function selectIndex(i) {
     if (!root.results.length) return
@@ -317,17 +164,14 @@ Item {
     root.selectedIndex = i
     var hit = root.results[i]
     var p = hit && hit.path ? String(hit.path) : ""
-    var kind = hit && hit.kind ? String(hit.kind) : Format.kindOf(p, false)
     root.activePath = p
-    if (p.length)
-      root.requestPreview(p, 1)
+    if (p.length) root.requestPreview(p, 1)
   }
   function moveSelection(dx, dy) {
     if (!root.results.length) return
-    var cols = root.columns
     var i = root.selectedIndex
     if (dx !== 0) i += dx
-    if (dy !== 0) i += dy * cols
+    if (dy !== 0) i += dy * root.columns
     root.selectIndex(i)
   }
   function launchFile(path) {
@@ -336,37 +180,13 @@ Item {
     var quoted = "'" + p.replace(/'/g, "'\\''") + "'"
     Quickshell.execDetached(["hyprctl", "dispatch", "exec", "xdg-open " + quoted])
   }
-  function launchDir(path) {
-    var p = String(path || "")
-    if (!p.length) return
-    var slash = p.lastIndexOf("/")
-    var dir = slash > 0 ? p.slice(0, slash) : p
-    var quoted = "'" + dir.replace(/'/g, "'\\''") + "'"
-    Quickshell.execDetached(["hyprctl", "dispatch", "exec", "xdg-open " + quoted])
-  }
   function openCurrent() {
     var p = root.currentPath()
     if (!p.length) return
     root.launchFile(p)
     Qt.callLater(root.close)
   }
-  function revealCurrent() {
-    var p = root.currentPath()
-    if (!p.length) return
-    root.launchDir(p)
-    Qt.callLater(root.close)
-  }
-  function pinToggle() {
-    if (!root.currentHit() && !root.activePath.length) return
-    if (root.cinema) root.exitCinema()
-    root.pinned = !root.pinned
-    if (root.pinned) {
-      root.enableLayerBlur()
-      Qt.callLater(function() { pinnedPane.forceActiveFocus() })
-    } else {
-      Qt.callLater(function() { searchField.forceActiveFocus() })
-    }
-  }
+  function bumpIdle() { idleTimer.restart() }
 
   Process {
     id: ipcProc
@@ -380,55 +200,10 @@ Item {
       root.runIpc()
     }
   }
-  Timer {
-    interval: 100
-    running: root.opened
-    repeat: true
-    onTriggered: root.callIpc("snapshot", "")
-  }
-  Timer {
-    id: locFlashTimer
-    interval: 1200
-    repeat: false
-    onTriggered: root.locFlash = ""
-  }
-  Timer {
-    id: idleTimer
-    interval: 60000
-    repeat: false
-    running: false
-    onTriggered: root.enterCinema()
-  }
-  Timer {
-    id: slideTimer
-    interval: 14000
-    repeat: true
-    running: false
-    onTriggered: {
-      if (root.cinema)
-        root.slideNext()
-    }
-  }
-  Timer {
-    id: panIdle
-    interval: 280
-    repeat: false
-    onTriggered: {
-      if (!root.opened || root.pinned || !root.heroImage) return
-      if (heroImg.status !== Image.Ready) return
-      if (heroImg.height <= heroClip.height + 4) return
-      heroPan.stop()
-      heroImg.y = 0
-      root.panArmed = true
-      heroPan.restart()
-    }
-  }
-  Timer {
-    id: debounce
-    interval: 80
-    repeat: false
-    onTriggered: { root.selectedIndex = 0; root.lastQueryRev = -1; root.requestQuery(root.queryText) }
-  }
+  Timer { interval: 100; running: root.opened; repeat: true; onTriggered: root.callIpc("snapshot", "") }
+  Timer { id: idleTimer; interval: 60000; repeat: false; running: false; onTriggered: {} }
+  Timer { id: slideTimer; interval: 14000; repeat: true; running: false; onTriggered: {} }
+  Timer { id: debounce; interval: 80; repeat: false; onTriggered: { root.selectedIndex = 0; root.lastQueryRev = -1; root.requestQuery(root.queryText) } }
 
   PanelWindow {
     visible: root.opened
@@ -442,184 +217,11 @@ Item {
     Rectangle {
       anchors.fill: parent
       color: Qt.rgba(root.background.r, root.background.g, root.background.b, 0.94)
-      visible: !root.pinned
     }
 
     Item {
       id: stage
       anchors.fill: parent
-      visible: !root.pinned
-      focus: root.cinema
-      Keys.onPressed: function(event) {
-        if (root.cinema) {
-          root.exitCinema()
-          event.accepted = true
-        }
-      }
-
-      Item {
-        id: hero
-        anchors.top: parent.top
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: root.cinema ? parent.height : Math.round(parent.height * 0.42)
-        z: root.cinema ? 6 : 0
-        Behavior on height { NumberAnimation { duration: 480; easing.type: Easing.InOutCubic } }
-
-        Rectangle {
-          anchors.fill: parent
-          color: "#101014"
-        }
-
-        Item {
-          id: heroClip
-          anchors.fill: parent
-          clip: true
-          visible: root.heroImage
-          onHeightChanged: {
-            if (root.cinema && heroImg.status === Image.Ready)
-              panIdle.restart()
-          }
-
-          Image {
-            id: heroPreload
-            width: 1
-            height: 1
-            visible: false
-            asynchronous: true
-            cache: true
-            sourceSize.width: 2048
-            source: root.pendingThumb.length ? Format.fileUrl(root.pendingThumb) : ""
-            onStatusChanged: {
-              if (status === Image.Ready && root.pendingThumb.length)
-                root.commitHero(root.pendingThumb)
-            }
-            onSourceChanged: {
-              if (status === Image.Ready && root.pendingThumb.length)
-                root.commitHero(root.pendingThumb)
-            }
-          }
-
-          Image {
-            id: heroImg
-            x: Math.round((heroClip.width - width) / 2)
-            y: 0
-            width: {
-              var sw = implicitWidth
-              var sh = implicitHeight
-              if (sw <= 0 || sh <= 0) return heroClip.width
-              var cover = Math.max(heroClip.width / sw, heroClip.height / sh)
-              var minH = heroClip.height * 1.28
-              if (sh * cover < minH)
-                cover = minH / sh
-              return sw * cover
-            }
-            height: {
-              var sw = implicitWidth
-              var sh = implicitHeight
-              if (sw <= 0 || sh <= 0) return heroClip.height
-              return width * sh / sw
-            }
-            source: root.shownThumb.length ? Format.fileUrl(root.shownThumb) : ""
-            fillMode: Image.PreserveAspectFit
-            asynchronous: true
-            cache: true
-            opacity: root.cinema ? 1 : 0.92
-            sourceSize.width: 2048
-            onSourceChanged: {
-              heroPan.stop()
-              y = 0
-            }
-            onStatusChanged: {
-              if (status === Image.Ready) {
-                y = 0
-                if (root.opened && !root.pinned)
-                  panIdle.restart()
-              }
-            }
-          }
-
-          SequentialAnimation {
-            id: heroPan
-            running: false
-            loops: Animation.Infinite
-            PauseAnimation { duration: 1000 }
-            NumberAnimation {
-              target: heroImg
-              property: "y"
-              from: 0
-              to: Math.min(0, heroClip.height - heroImg.height)
-              duration: 8000
-              easing.type: Easing.InOutSine
-            }
-            PauseAnimation { duration: 500 }
-            NumberAnimation {
-              target: heroImg
-              property: "y"
-              to: 0
-              duration: 8000
-              easing.type: Easing.InOutSine
-            }
-            PauseAnimation { duration: 700 }
-          }
-        }
-
-        PreviewPane {
-          anchors.fill: parent
-          visible: !root.heroImage && root.heroKind.length > 0 && root.heroKind !== "image"
-          preview: root.previewResult
-          loading: root.previewLoading
-          foreground: root.foreground
-          accent: root.accent
-          selectable: false
-        }
-
-        Rectangle {
-          anchors.fill: parent
-          visible: !root.cinema
-          gradient: Gradient {
-            GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.35) }
-            GradientStop { position: 0.45; color: Qt.rgba(0, 0, 0, 0.05) }
-            GradientStop { position: 1.0; color: Qt.rgba(root.background.r, root.background.g, root.background.b, 0.96) }
-          }
-        }
-
-        Column {
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.bottom: parent.bottom
-          anchors.leftMargin: 36
-          anchors.rightMargin: 36
-          anchors.bottomMargin: 18
-          spacing: 6
-          visible: !root.cinema
-
-          Text {
-            width: parent.width
-            text: Format.displayText(root.heroTitle)
-            visible: root.heroTitle.length > 0
-            color: "white"
-            font.pixelSize: Style.font.title
-            font.weight: Font.DemiBold
-            elide: Text.ElideMiddle
-            textFormat: Text.PlainText
-          }
-          Text {
-            width: parent.width
-            text: Format.displayText(root.locFlash.length ? root.locFlash : root.locationLabel)
-            visible: root.locationLabel.length > 0
-            color: root.locFlash.length ? root.accent : Qt.rgba(1, 1, 1, 0.65)
-            font.pixelSize: Style.font.caption
-            elide: Text.ElideMiddle
-            textFormat: Text.PlainText
-            MouseArea {
-              anchors.fill: parent
-              cursorShape: Qt.PointingHandCursor
-              onClicked: root.copyLocation()
-            }
-          }
-        }
-      }
 
       Rectangle {
         id: searchBar
@@ -632,9 +234,7 @@ Item {
         color: Qt.rgba(0, 0, 0, 0.55)
         border.width: 1
         border.color: searchField.activeFocus ? root.accent : Qt.rgba(1, 1, 1, 0.16)
-        visible: !root.cinema
         z: 4
-
         Text {
           anchors.fill: parent
           leftPadding: 20
@@ -644,7 +244,6 @@ Item {
           color: Qt.rgba(1, 1, 1, 0.38)
           font.pixelSize: 15
           verticalAlignment: Text.AlignVCenter
-          elide: Text.ElideRight
           textFormat: Text.PlainText
         }
         TextInput {
@@ -652,8 +251,6 @@ Item {
           anchors.fill: parent
           leftPadding: 20
           rightPadding: 20
-          topPadding: 0
-          bottomPadding: 0
           verticalAlignment: TextInput.AlignVCenter
           color: "white"
           font.pixelSize: 15
@@ -662,21 +259,12 @@ Item {
           focus: true
           Keys.priority: Keys.BeforeItem
           Keys.onPressed: function(event) {
-            if (root.cinema) {
-              root.exitCinema()
-              event.accepted = true
-              return
-            }
             root.bumpIdle()
-            if (event.key === Qt.Key_Escape) {
-              if (root.pinned) root.pinned = false
-              else root.close()
-              event.accepted = true
-            } else if (event.key === Qt.Key_Down) { root.moveSelection(0, 1); event.accepted = true }
+            if (event.key === Qt.Key_Escape) { root.close(); event.accepted = true }
+            else if (event.key === Qt.Key_Down) { root.moveSelection(0, 1); event.accepted = true }
             else if (event.key === Qt.Key_Up) { root.moveSelection(0, -1); event.accepted = true }
             else if (event.key === Qt.Key_Right && cursorPosition === text.length && selectedText.length === 0) { root.moveSelection(1, 0); event.accepted = true }
             else if (event.key === Qt.Key_Left && cursorPosition === 0 && selectedText.length === 0) { root.moveSelection(-1, 0); event.accepted = true }
-            else if (event.key === Qt.Key_Space) { root.pinToggle(); event.accepted = true }
             else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.openCurrent(); event.accepted = true }
           }
           onTextChanged: { root.bumpIdle(); root.queryText = text; debounce.restart() }
@@ -685,15 +273,12 @@ Item {
 
       GridView {
         id: grid
-        anchors.top: hero.bottom
+        anchors.top: searchBar.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
-        anchors.leftMargin: 28
-        anchors.rightMargin: 28
-        anchors.topMargin: 8
-        anchors.bottomMargin: 28
-        visible: !root.cinema
+        anchors.margins: 28
+        anchors.topMargin: 16
         clip: true
         cellWidth: Math.floor(width / root.columns)
         cellHeight: Math.round(cellWidth * 0.78)
@@ -713,68 +298,11 @@ Item {
             foreground: root.foreground
             accent: root.accent
             homePrefix: root.homePrefix
-            onActivated: { root.bumpIdle(); root.selectIndex(index) }
-            onOpened: { root.bumpIdle(); root.selectIndex(index); root.openCurrent() }
+            onActivated: root.selectIndex(index)
+            onOpened: { root.selectIndex(index); root.openCurrent() }
           }
         }
       }
-
-      Text {
-        anchors.centerIn: grid
-        visible: root.results.length === 0 && root.queryText.length > 0 && !root.cinema
-        text: "no matches"
-        textFormat: Text.PlainText
-        color: root.foreground
-        opacity: 0.45
-        font.pixelSize: Style.font.title
-        z: 2
-      }
-
-      Text {
-        anchors.bottom: parent.bottom
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottomMargin: 10
-        text: Format.displayText(root.diskLabel)
-        visible: root.diskLabel.length > 0 && !root.cinema
-        color: root.foreground
-        opacity: 0.4
-        font.pixelSize: Style.font.caption
-        textFormat: Text.PlainText
-      }
-
-      MouseArea {
-        anchors.fill: parent
-        z: root.cinema ? 12 : 1
-        hoverEnabled: true
-        acceptedButtons: root.cinema ? Qt.AllButtons : Qt.NoButton
-        onPressed: function(mouse) {
-          root.bumpIdle()
-          mouse.accepted = root.cinema
-        }
-        onPositionChanged: root.bumpIdle()
-      }
     }
-
-    Rectangle {
-      id: pinnedPane
-      anchors.fill: parent
-      visible: root.pinned
-      color: Qt.rgba(root.background.r, root.background.g, root.background.b, 1)
-      focus: root.pinned
-      Keys.onPressed: function(event) {
-        if (event.key === Qt.Key_Escape || event.key === Qt.Key_Space) { root.pinToggle(); event.accepted = true }
-        else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.revealCurrent(); event.accepted = true }
-      }
-      PreviewPane {
-        anchors.fill: parent
-        anchors.margins: 36
-        preview: root.previewResult
-        loading: root.previewLoading
-        foreground: root.foreground
-        accent: root.accent
-        selectable: true
-        autoplay: root.pinned
-      }
-      Text {
-        anchors.bottom: parent.bottom
-        anchors
+  }
+}
