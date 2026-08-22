@@ -62,11 +62,7 @@ Item {
   readonly property string heroThumb: {
     if (root.heroKind === "image") {
       if (root.previewResult && root.previewResult.blocked) return ""
-      if (root.cinema)
-        return String(root.previewResult && root.previewResult.path ? root.previewResult.path : "")
-      var hit = root.currentHit()
-      if (hit && hit.path) return String(hit.path)
-      return String(root.activePath || "")
+      return String(root.previewResult && root.previewResult.path ? root.previewResult.path : "")
     }
     if (root.heroKind === "video") {
       var t = String(root.previewResult && root.previewResult.thumb ? root.previewResult.thumb : "")
@@ -335,14 +331,10 @@ Item {
     if (typeof overlayWin !== "undefined") overlayWin.stopPan()
     var t = root.heroThumb
     if (!t.length) {
-      if (root.heroKind === "image") {
-        var hit = root.currentHit()
-        t = hit && hit.path ? String(hit.path) : String(root.activePath || "")
+      if (root.heroKind !== "image" && root.heroKind !== "video") {
+        root.shownThumb = ""
+        root.pendingThumb = ""
       }
-    }
-    if (!t.length) {
-      root.shownThumb = ""
-      root.pendingThumb = ""
       return
     }
     if (t === root.shownThumb) {
