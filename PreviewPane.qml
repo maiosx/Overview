@@ -25,6 +25,7 @@ Item {
     return String((preview && preview.label) || "")
   }
   readonly property bool showText: root.kind === "code" || root.kind === "csv" || root.kind === "hex" || root.kind === "video"
+  readonly property var pdfPages: preview && preview.pages && preview.pages.length ? preview.pages : []
 
   Rectangle {
     anchors.fill: parent
@@ -48,6 +49,57 @@ Item {
       asynchronous: true
       cache: false
       sourceSize.width: 4472
+    }
+
+    Flickable {
+      id: pdfFlick
+      anchors.fill: parent
+      visible: root.kind === "pdf" && pdfPages.length > 0
+      clip: true
+      boundsBehavior: Flickable.StopAtBounds
+      flickableDirection: Flickable.VerticalFlick
+      interactive: true
+      contentWidth: width
+      contentHeight: pdfCol.height
+      WheelHandler {
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+        onWheel: function(event) {
+          var maxY = Math.max(0, pdfFlick.contentHeight - pdfFlick.height)
+          var dy = event.pixelDelta.y !== 0 ? event.pixelDelta.y : event.angleDelta.y / 8
+          pdfFlick.contentY = Math.max(0, Math.min(maxY, pdfFlick.contentY - dy))
+          event.accepted = true
+        }
+      }
+      ScrollBar.vertical: ScrollBar {
+        parent: pdfFlick.parent
+        anchors.top: pdfFlick.top
+        anchors.bottom: pdfFlick.bottom
+        anchors.right: pdfFlick.right
+        policy: pdfFlick.contentHeight > pdfFlick.height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+      }
+      Column {
+        id: pdfCol
+        width: pdfFlick.width
+        spacing: root.selectable ? 18 : 10
+        Repeater {
+          model: pdfPages
+          Image {
+            width: pdfCol.width
+            height: {
+              if (root.selectable)
+                return pdfFlick.height
+              if (status === Image.Ready && implicitWidth > 0)
+                return Math.ceil(width * implicitHeight / implicitWidth)
+              return pdfFlick.height
+            }
+            fillMode: Image.PreserveAspectFit
+            source: Format.fileUrl(modelData)
+            asynchronous: true
+            cache: true
+            sourceSize.width: 1600
+          }
+        }
+      }
     }
 
     Flickable {
@@ -120,7 +172,7 @@ Item {
       anchors.centerIn: parent
       width: parent.width - 40
       visible: root.kind === "pdf" && preview.need_poppler
-      text: "install poppler for PDF text\npacman -S poppler"
+      text: "install poppler for PDF preview\npacman -S poppler"
       textFormat: Text.PlainText
       color: root.foreground
       wrapMode: Text.WordWrap

@@ -68,10 +68,20 @@ Item {
 
   readonly property string readBody: "head -c 200000 \"$1\""
 
-  readonly property string pdfBody: "if ! command -v pdftotext >/dev/null 2>&1; then printf '%s\\n' POPPLER_MISSING; exit 0; fi; " +
-    "ulimit -t 3 2>/dev/null; ulimit -v 524288 2>/dev/null; ulimit -f 4096 2>/dev/null; " +
-    "if command -v timeout >/dev/null 2>&1; then timeout -k 1 4 pdftotext -f 1 -l 1 -layout \"$1\" - 2>/dev/null | head -c 200000; " +
-    "else pdftotext -f 1 -l 1 -layout \"$1\" - 2>/dev/null | head -c 200000; fi"
+  readonly property string pdfBody: "src=\"$1\"; out=\"$2\"; " +
+    "if ! command -v pdftoppm >/dev/null 2>&1; then printf '%s\\n' POPPLER_MISSING; exit 0; fi; " +
+    "ulimit -t 8 2>/dev/null; ulimit -v 1048576 2>/dev/null; ulimit -f 16384 2>/dev/null; " +
+    "mkdir -p \"$out\" || exit 0; " +
+    "rm -f \"$out\"/page*.png; " +
+    "n=12; " +
+    "if command -v pdfinfo >/dev/null 2>&1; then " +
+    "  p=$(pdfinfo \"$src\" 2>/dev/null | awk '/^Pages:/{print $2}'); " +
+    "  case \"$p\" in ''|*[!0-9]*) p=12 ;; esac; " +
+    "  if [ \"$p\" -gt 0 ] && [ \"$p\" -lt 12 ]; then n=$p; fi; " +
+    "fi; " +
+    "if command -v timeout >/dev/null 2>&1; then timeout -k 1 8 pdftoppm -png -r 110 -f 1 -l \"$n\" \"$src\" \"$out/page\" >/dev/null 2>&1; " +
+    "else pdftoppm -png -r 110 -f 1 -l \"$n\" \"$src\" \"$out/page\" >/dev/null 2>&1; fi; " +
+    "ls -1 \"$out\"/page*.png 2>/dev/null"
 
   readonly property string imageBody: "src=\"$1\"; out=\"$2\"; " +
     "ident=$(command -v identify || true); conv=$(command -v magick || command -v convert || true); " +
@@ -207,8 +217,10 @@ Item {
     if (kind === "pdf") {
       if (pdfProc.running) pdfProc.running = false
       pdfKill.restart()
-      pdfProc.command = ["sh", "-c", root.pdfBody, "overview-pdf", p]
+      var dir = root.home + "/.cache/overview/pdf/" + Format.basename(p).replace(/[^A-Za-z0-9._-]/g, "_")
+      pdfProc.command = ["sh", "-c", root.pdfBody, "overview-pdf", p, dir]
       pdfProc.running = true
+      root.lastPreview = { kind: "pdf", path: p, pages: [], label: Format.basename(p) }
       return String(root.previewRevision + 1)
     }
     if (textProc.running) textProc.running = false
@@ -299,9 +311,30 @@ Item {
         pdfKill.stop()
         var t = String(text || "")
         if (t.indexOf("POPPLER_MISSING") === 0) {
-          root.lastPreview = { kind: "pdf", path: root.previewPath, need_poppler: true, label: "PDF" }
+          root.lastPreview = { kind: "pdf", path: root.previewPath, need_poppler: true, pages: [], label: "PDF" }
           root.previewRevision += 1
-        } else root.applyTextPreview(t)
+          return
+        }
+        var pages = []
+        var prefix = root.home + "/.cache/overview/"
+        var lines = t.split(/\r?\n/)
+        for (var i = 0; i < lines.length && pages.length < 12; i++) {
+          var pg = String(lines[i] || "").replace(/^\s+|\s+$/g, "")
+          if (!pg.length || pg.charAt(0) !== "/") continue
+          if (pg.indexOf(prefix) !== 0) continue
+          if (pg.indexOf("..") >= 0) continue
+          var lower = pg.toLowerCase()
+          if (lower.length < 4 || lower.indexOf(".png") !== lower.length - 4) continue
+          pages.push(pg)
+        }
+        root.lastPreview = {
+          kind: "pdf",
+          path: root.previewPath,
+          pages: pages,
+          label: Format.basename(root.previewPath),
+          need_poppler: false
+        }
+        root.previewRevision += 1
       }
     }
     onExited: pdfKill.stop()
@@ -314,7 +347,7 @@ Item {
   }
   Timer {
     id: pdfKill
-    interval: 5000
+    interval: 10000
     repeat: false
     onTriggered: { if (pdfProc.running) pdfProc.running = false }
   }
