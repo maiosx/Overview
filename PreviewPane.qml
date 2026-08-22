@@ -76,8 +76,8 @@ Item {
       id: vidPlayer
       videoOutput: vidOut
       audioOutput: AudioOutput {
-        muted: true
-        volume: 0
+        muted: false
+        volume: 1.0
       }
       loops: MediaPlayer.Infinite
       source: root.autoplay && root.kind === "video" && preview && preview.path ? Format.fileUrl(preview.path) : ""
