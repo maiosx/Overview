@@ -190,12 +190,28 @@ PanelWindow {
       visible: host && host.cinema
       z: 20
       hoverEnabled: true
-      onClicked: host.exitCinema()
-      onPositionChanged: host.exitCinema()
-    }
-    HoverHandler {
-      enabled: host && host.opened && !host.pinned && !host.cinema
-      onPointChanged: host.bumpIdle()
+      property bool armed: false
+      property real lx: -1
+      property real ly: -1
+      onVisibleChanged: {
+        armed = false
+        lx = -1
+        ly = -1
+        if (visible) armTimer.restart()
+      }
+      Timer {
+        id: armTimer
+        interval: 600
+        repeat: false
+        onTriggered: parent.armed = true
+      }
+      onClicked: { if (host) host.exitCinema() }
+      onPositionChanged: function(mouse) {
+        if (!armed || !host) return
+        if (lx < 0) { lx = mouse.x; ly = mouse.y; return }
+        if (Math.abs(mouse.x - lx) < 18 && Math.abs(mouse.y - ly) < 18) return
+        host.exitCinema()
+      }
     }
   }
 
