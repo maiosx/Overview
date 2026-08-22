@@ -44,12 +44,16 @@ Item {
   property bool cinema: false
   property int cinemaSavedIndex: 0
   property int cinemaLastPick: -1
+  property var cinemaPool: []
+  property int cinemaTries: 0
   readonly property string heroPath: {
     var hit = root.currentHit()
     if (hit && hit.path) return String(hit.path)
     return String(root.activePath || "")
   }
   readonly property string heroKind: {
+    if (root.cinema && root.previewResult && root.previewResult.kind)
+      return String(root.previewResult.kind)
     var hit = root.currentHit()
     if (hit && hit.kind) return String(hit.kind)
     if (hit && hit.path) return Format.kindOf(hit.path, false)
@@ -104,8 +108,11 @@ Item {
     root.shownThumb = ""
     root.pendingThumb = ""
     root.cinema = false
+    root.cinemaPool = []
+    root.cinemaTries = 0
     root.enableLayerBlur()
     root.requestQuery("")
+    root.callIpc("queryImages", "")
     idleTimer.restart()
     Qt.callLater(function() { overlayWin.focusSearch() })
   }
@@ -221,6 +228,8 @@ Item {
     if (snap.home) root.homePrefix = String(snap.home)
     if (snap.diskLabel !== undefined) root.diskLabel = String(snap.diskLabel || "")
     if (snap.diskUsedFrac !== undefined) root.diskUsedFrac = Number(snap.diskUsedFrac) || 0
+    if (snap.images && snap.images.length)
+      root.cinemaPool = snap.images
   }
   function requestQuery(q) { root.callIpc("query", q) }
   function requestPreview(path, page) {
@@ -254,12 +263,15 @@ Item {
     if (typeof overlayWin !== "undefined") overlayWin.startPanSoon()
   }
   function bumpIdle() {
-    if (root.cinema) root.exitCinema()
+    if (root.cinema) {
+      root.exitCinema()
+      return
+    }
     idleTimer.restart()
   }
   function imageHits() {
     var out = []
-    var list = root.results || []
+    var list = (root.cinemaPool && root.cinemaPool.length) ? root.cinemaPool : (root.results || [])
     for (var i = 0; i < list.length; i++) {
       var hit = list[i]
       var kind = hit && hit.kind ? String(hit.kind) : Format.kindOf(hit && hit.path ? hit.path : "", false)
@@ -271,7 +283,15 @@ Item {
   function enterCinema() {
     if (!root.opened || root.pinned || root.cinema) return
     var hits = root.imageHits()
-    if (!hits.length && !root.shownThumb.length) return
+    if (!hits.length) {
+      root.callIpc("queryImages", "")
+      if (root.cinemaTries < 5) {
+        root.cinemaTries += 1
+        cinemaRetry.restart()
+      }
+      return
+    }
+    root.cinemaTries = 0
     root.cinemaSavedIndex = root.selectedIndex
     root.cinema = true
     idleTimer.stop()
@@ -297,13 +317,6 @@ Item {
     root.cinemaLastPick = i
     var p = String(hits[i].path || "")
     if (!p.length) return
-    var list = root.results || []
-    for (var j = 0; j < list.length; j++) {
-      if (list[j] && String(list[j].path || "") === p) {
-        root.selectIndex(j)
-        return
-      }
-    }
     root.requestPreview(p, 1)
   }
   function selectIndex(i) {
@@ -392,6 +405,15 @@ Item {
     repeat: false
     running: false
     onTriggered: root.enterCinema()
+  }
+  Timer {
+    id: cinemaRetry
+    interval: 1200
+    repeat: false
+    onTriggered: {
+      if (root.opened && !root.pinned && !root.cinema)
+        root.enterCinema()
+    }
   }
   Timer {
     id: slideTimer
