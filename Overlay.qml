@@ -39,39 +39,88 @@ Item {
   property string activePath: ""
   property string locFlash: ""
   readonly property int columns: 3
-  property bool panArmed: false
   property string shownThumb: ""
   property string pendingThumb: ""
   property bool cinema: false
   property int cinemaSavedIndex: 0
   property int cinemaLastPick: -1
+  readonly property string heroPath: {
+    var hit = root.currentHit()
+    if (hit && hit.path) return String(hit.path)
+    return String(root.activePath || "")
+  }
+  readonly property string heroKind: {
+    var hit = root.currentHit()
+    if (hit && hit.kind) return String(hit.kind)
+    if (hit && hit.path) return Format.kindOf(hit.path, false)
+    return String(root.previewResult && root.previewResult.kind ? root.previewResult.kind : "")
+  }
+  readonly property string heroThumb: {
+    if (root.heroKind === "image") {
+      if (root.previewResult && root.previewResult.blocked) return ""
+      return String(root.previewResult && root.previewResult.path ? root.previewResult.path : "")
+    }
+    if (root.heroKind === "video") {
+      var t = String(root.previewResult && root.previewResult.thumb ? root.previewResult.thumb : "")
+      if (t.length) return t
+      return Format.videoThumbPath(root.heroPath, root.homePrefix || Quickshell.env("HOME") || "")
+    }
+    return ""
+  }
+  readonly property string locationLabel: {
+    var p = String(root.activePath || "")
+    if (!p.length) return ""
+    var slash = p.lastIndexOf("/")
+    var dir = slash > 0 ? p.slice(0, slash) : p
+    var home = String(root.homePrefix || Quickshell.env("HOME") || "")
+    if (home.length && dir.indexOf(home) === 0) dir = "~" + dir.slice(home.length)
+    return dir.length ? dir : "/"
+  }
+  readonly property string heroTitle: {
+    var hit = root.currentHit()
+    if (hit && hit.name) return String(hit.name)
+    return Format.basename(root.activePath)
+  }
+
+  function serviceRef() {
+    try {
+      if (root.pluginRegistry && typeof root.pluginRegistry.serviceFor === "function") {
+        var s = root.pluginRegistry.serviceFor(root.pluginId)
+        if (s && s !== root) return s
+      }
+    } catch (e) {}
+    return null
+  }
+
   function open(payloadJson) {
     root.opened = true
     root.pinned = false
-    root.cinema = false
     root.queryText = ""
-    if (typeof searchField !== 'undefined') searchField.text = ""
+    overlayWin.clearSearch()
     root.results = []
     root.lastQueryRev = -1
     root.previewResult = ({})
     root.activePath = ""
     root.shownThumb = ""
     root.pendingThumb = ""
+    root.cinema = false
     root.enableLayerBlur()
     root.requestQuery("")
     idleTimer.restart()
-    Qt.callLater(function() { if (typeof searchField !== 'undefined') searchField.forceActiveFocus() })
+    Qt.callLater(function() { overlayWin.focusSearch() })
   }
-  function close() { root.opened = false; root.pinned = false; root.cinema = false; idleTimer.stop(); slideTimer.stop() }
+  function close() {
+    root.opened = false
+    root.pinned = false
+    root.cinema = false
+    idleTimer.stop()
+    slideTimer.stop()
+  }
   function toggle() { if (root.opened) root.close(); else root.open("{}") }
   function query(arg) { return root.callIpc("query", arg) }
   function snapshot(arg) { return root.callIpc("snapshot", arg) }
   function preview(arg) { return root.callIpc("preview", arg) }
-  function enableLayerBlur() {
-    Quickshell.execDetached(["hyprctl", "keyword", "layerrule", "blur,overview"])
-    Quickshell.execDetached(["hyprctl", "keyword", "layerrule", "ignorealpha 0,overview"])
-    Quickshell.execDetached(["hyprctl", "keyword", "layerrule", "xray 0,overview"])
-  }
+
   function currentHit() {
     if (!root.results || root.selectedIndex < 0 || root.selectedIndex >= root.results.length) return null
     return root.results[root.selectedIndex]
@@ -81,15 +130,34 @@ Item {
     var hit = root.currentHit()
     return hit && hit.path ? String(hit.path) : ""
   }
+  function locationPath() {
+    var p = String(root.activePath || "")
+    if (!p.length) return ""
+    var slash = p.lastIndexOf("/")
+    return slash > 0 ? p.slice(0, slash) : p
+  }
+  function copyText(s) {
+    var t = String(s || "")
+    if (!t.length) return
+    try { Quickshell.clipboardText = t } catch (e) {}
+    Quickshell.execDetached(["wl-copy", "--", t])
+  }
+  function copyLocation() {
+    var p = root.locationPath()
+    if (!p.length) return
+    root.copyText(p)
+    root.locFlash = "copied"
+    locFlashTimer.restart()
+  }
+  function enableLayerBlur() {
+    Quickshell.execDetached(["hyprctl", "keyword", "layerrule", "blur,overview"])
+    Quickshell.execDetached(["hyprctl", "keyword", "layerrule", "ignorealpha 0,overview"])
+    Quickshell.execDetached(["hyprctl", "keyword", "layerrule", "xray 0,overview"])
+  }
+
   function callIpc(method, arg) {
     var job = { method: String(method || ""), arg: arg === undefined || arg === null ? "" : String(arg) }
-    var svc = null
-    try {
-      if (root.pluginRegistry && typeof root.pluginRegistry.serviceFor === "function") {
-        svc = root.pluginRegistry.serviceFor(root.pluginId)
-        if (svc === root) svc = null
-      }
-    } catch (e) { svc = null }
+    var svc = root.serviceRef()
     if (svc && typeof svc[job.method] === "function") {
       var result = svc[job.method](job.arg)
       if (job.method === "snapshot") root.applySnapshot(result)
@@ -125,7 +193,8 @@ Item {
       var hit = next[root.selectedIndex]
       var p = hit && hit.path ? String(hit.path) : ""
       root.activePath = p
-      if (p.length) root.requestPreview(p, 1)
+      if (hit && hit.path)
+        root.requestPreview(p, 1)
     } else {
       root.previewResult = ({})
       root.activePath = ""
@@ -147,15 +216,95 @@ Item {
       root.lastPreviewRev = prev
       root.previewResult = snap.preview || {}
       root.previewLoading = false
+      root.queueHero(root.heroThumb)
     }
     if (snap.home) root.homePrefix = String(snap.home)
     if (snap.diskLabel !== undefined) root.diskLabel = String(snap.diskLabel || "")
+    if (snap.diskUsedFrac !== undefined) root.diskUsedFrac = Number(snap.diskUsedFrac) || 0
   }
   function requestQuery(q) { root.callIpc("query", q) }
   function requestPreview(path, page) {
     root.activePath = String(path || "")
     root.previewLoading = true
     root.callIpc("preview", JSON.stringify({ path: path, page: page || 1 }))
+  }
+  function queueHero(path) {
+    var p = String(path || "")
+    if (!p.length) {
+      if (root.heroKind !== "image" && root.heroKind !== "video") {
+        root.shownThumb = ""
+        root.pendingThumb = ""
+        if (typeof overlayWin !== "undefined") overlayWin.stopPan()
+      }
+      return
+    }
+    if (p === root.shownThumb) {
+      root.pendingThumb = ""
+      return
+    }
+    root.pendingThumb = p
+  }
+  function commitHero(path) {
+    var p = String(path || "")
+    if (!p.length) return
+    if (p !== root.pendingThumb && p !== root.heroThumb) return
+    if (typeof overlayWin !== "undefined") overlayWin.stopPan()
+    root.shownThumb = p
+    root.pendingThumb = ""
+    if (typeof overlayWin !== "undefined") overlayWin.startPanSoon()
+  }
+  function bumpIdle() {
+    if (root.cinema) root.exitCinema()
+    idleTimer.restart()
+  }
+  function imageHits() {
+    var out = []
+    var list = root.results || []
+    for (var i = 0; i < list.length; i++) {
+      var hit = list[i]
+      var kind = hit && hit.kind ? String(hit.kind) : Format.kindOf(hit && hit.path ? hit.path : "", false)
+      if (kind === "image" && hit && hit.path)
+        out.push(hit)
+    }
+    return out
+  }
+  function enterCinema() {
+    if (!root.opened || root.pinned || root.cinema) return
+    var hits = root.imageHits()
+    if (!hits.length && !root.shownThumb.length) return
+    root.cinemaSavedIndex = root.selectedIndex
+    root.cinema = true
+    idleTimer.stop()
+    root.slideNext()
+    slideTimer.restart()
+    Qt.callLater(function() { overlayWin.focusStage() })
+  }
+  function exitCinema() {
+    if (!root.cinema) return
+    root.cinema = false
+    slideTimer.stop()
+    if (root.results && root.cinemaSavedIndex >= 0 && root.cinemaSavedIndex < root.results.length)
+      root.selectIndex(root.cinemaSavedIndex)
+    idleTimer.restart()
+    Qt.callLater(function() { overlayWin.focusSearch() })
+  }
+  function slideNext() {
+    var hits = root.imageHits()
+    if (!hits.length) return
+    var i = Math.floor(Math.random() * hits.length)
+    if (hits.length > 1 && i === root.cinemaLastPick)
+      i = (i + 1) % hits.length
+    root.cinemaLastPick = i
+    var p = String(hits[i].path || "")
+    if (!p.length) return
+    var list = root.results || []
+    for (var j = 0; j < list.length; j++) {
+      if (list[j] && String(list[j].path || "") === p) {
+        root.selectIndex(j)
+        return
+      }
+    }
+    root.requestPreview(p, 1)
   }
   function selectIndex(i) {
     if (!root.results.length) return
@@ -180,13 +329,38 @@ Item {
     var quoted = "'" + p.replace(/'/g, "'\\''") + "'"
     Quickshell.execDetached(["hyprctl", "dispatch", "exec", "xdg-open " + quoted])
   }
+  function launchDir(path) {
+    var p = String(path || "")
+    if (!p.length) return
+    var slash = p.lastIndexOf("/")
+    var dir = slash > 0 ? p.slice(0, slash) : p
+    var quoted = "'" + dir.replace(/'/g, "'\\''") + "'"
+    Quickshell.execDetached(["hyprctl", "dispatch", "exec", "xdg-open " + quoted])
+  }
   function openCurrent() {
     var p = root.currentPath()
     if (!p.length) return
     root.launchFile(p)
     Qt.callLater(root.close)
   }
-  function bumpIdle() { idleTimer.restart() }
+  function revealCurrent() {
+    var p = root.currentPath()
+    if (!p.length) return
+    root.launchDir(p)
+    Qt.callLater(root.close)
+  }
+  function pinToggle() {
+    if (!root.currentHit() && !root.activePath.length) return
+    if (root.cinema) root.exitCinema()
+    root.pinned = !root.pinned
+    if (root.pinned) {
+      root.enableLayerBlur()
+      Qt.callLater(function() { overlayWin.focusPinned() })
+    } else {
+      Qt.callLater(function() { overlayWin.focusSearch() })
+    }
+  }
+  function kickDebounce() { debounce.restart() }
 
   Process {
     id: ipcProc
@@ -200,109 +374,41 @@ Item {
       root.runIpc()
     }
   }
-  Timer { interval: 100; running: root.opened; repeat: true; onTriggered: root.callIpc("snapshot", "") }
-  Timer { id: idleTimer; interval: 60000; repeat: false; running: false; onTriggered: {} }
-  Timer { id: slideTimer; interval: 14000; repeat: true; running: false; onTriggered: {} }
-  Timer { id: debounce; interval: 80; repeat: false; onTriggered: { root.selectedIndex = 0; root.lastQueryRev = -1; root.requestQuery(root.queryText) } }
+  Timer {
+    interval: 100
+    running: root.opened
+    repeat: true
+    onTriggered: root.callIpc("snapshot", "")
+  }
+  Timer {
+    id: locFlashTimer
+    interval: 1200
+    repeat: false
+    onTriggered: root.locFlash = ""
+  }
+  Timer {
+    id: idleTimer
+    interval: 60000
+    repeat: false
+    running: false
+    onTriggered: root.enterCinema()
+  }
+  Timer {
+    id: slideTimer
+    interval: 14000
+    repeat: true
+    running: false
+    onTriggered: { if (root.cinema) root.slideNext() }
+  }
+  Timer {
+    id: debounce
+    interval: 80
+    repeat: false
+    onTriggered: { root.selectedIndex = 0; root.lastQueryRev = -1; root.requestQuery(root.queryText) }
+  }
 
-  PanelWindow {
-    visible: root.opened
-    anchors { top: true; bottom: true; left: true; right: true }
-    color: "transparent"
-    WlrLayershell.namespace: "overview"
-    WlrLayershell.layer: WlrLayer.Overlay
-    WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
-    exclusionMode: ExclusionMode.Ignore
-
-    Rectangle {
-      anchors.fill: parent
-      color: Qt.rgba(root.background.r, root.background.g, root.background.b, 0.94)
-    }
-
-    Item {
-      id: stage
-      anchors.fill: parent
-
-      Rectangle {
-        id: searchBar
-        anchors.top: parent.top
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.topMargin: 22
-        width: Math.min(parent.width - 72, 720)
-        height: 44
-        radius: 22
-        color: Qt.rgba(0, 0, 0, 0.55)
-        border.width: 1
-        border.color: searchField.activeFocus ? root.accent : Qt.rgba(1, 1, 1, 0.16)
-        z: 4
-        Text {
-          anchors.fill: parent
-          leftPadding: 20
-          rightPadding: 20
-          text: "Search files"
-          visible: searchField.text.length === 0
-          color: Qt.rgba(1, 1, 1, 0.38)
-          font.pixelSize: 15
-          verticalAlignment: Text.AlignVCenter
-          textFormat: Text.PlainText
-        }
-        TextInput {
-          id: searchField
-          anchors.fill: parent
-          leftPadding: 20
-          rightPadding: 20
-          verticalAlignment: TextInput.AlignVCenter
-          color: "white"
-          font.pixelSize: 15
-          clip: true
-          selectByMouse: true
-          focus: true
-          Keys.priority: Keys.BeforeItem
-          Keys.onPressed: function(event) {
-            root.bumpIdle()
-            if (event.key === Qt.Key_Escape) { root.close(); event.accepted = true }
-            else if (event.key === Qt.Key_Down) { root.moveSelection(0, 1); event.accepted = true }
-            else if (event.key === Qt.Key_Up) { root.moveSelection(0, -1); event.accepted = true }
-            else if (event.key === Qt.Key_Right && cursorPosition === text.length && selectedText.length === 0) { root.moveSelection(1, 0); event.accepted = true }
-            else if (event.key === Qt.Key_Left && cursorPosition === 0 && selectedText.length === 0) { root.moveSelection(-1, 0); event.accepted = true }
-            else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.openCurrent(); event.accepted = true }
-          }
-          onTextChanged: { root.bumpIdle(); root.queryText = text; debounce.restart() }
-        }
-      }
-
-      GridView {
-        id: grid
-        anchors.top: searchBar.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        anchors.margins: 28
-        anchors.topMargin: 16
-        clip: true
-        cellWidth: Math.floor(width / root.columns)
-        cellHeight: Math.round(cellWidth * 0.78)
-        model: root.results
-        currentIndex: root.selectedIndex
-        boundsBehavior: Flickable.StopAtBounds
-        delegate: Item {
-          required property int index
-          required property var modelData
-          width: grid.cellWidth
-          height: grid.cellHeight
-          FileCard {
-            anchors.fill: parent
-            anchors.margins: 10
-            hit: modelData
-            selected: index === root.selectedIndex
-            foreground: root.foreground
-            accent: root.accent
-            homePrefix: root.homePrefix
-            onActivated: root.selectIndex(index)
-            onOpened: { root.selectIndex(index); root.openCurrent() }
-          }
-        }
-      }
-    }
+  OverlayWindow {
+    id: overlayWin
+    host: root
   }
 }
