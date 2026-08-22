@@ -60,22 +60,6 @@ Item {
         }
 
         Rectangle {
-          width: 54
-          height: 54
-          radius: 27
-          anchors.centerIn: parent
-          color: Qt.rgba(0.85, 0.08, 0.12, 0.92)
-          border.width: 0
-          Text {
-            anchors.centerIn: parent
-            text: "▶"
-            color: "white"
-            font.pixelSize: 20
-            leftPadding: 3
-          }
-        }
-
-        Rectangle {
           anchors.left: parent.left
           anchors.bottom: parent.bottom
           anchors.margins: 10

@@ -333,27 +333,6 @@ Item {
           }
         }
 
-        Rectangle {
-          width: 78
-          height: 78
-          radius: 39
-          anchors.centerIn: parent
-          visible: root.heroTitle.length > 0
-          color: Qt.rgba(0.85, 0.08, 0.12, 0.92)
-          MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            onClicked: root.openCurrent()
-          }
-          Text {
-            anchors.centerIn: parent
-            text: "▶"
-            color: "white"
-            font.pixelSize: 28
-            leftPadding: 4
-          }
-        }
-
         Column {
           anchors.left: parent.left
           anchors.right: parent.right
