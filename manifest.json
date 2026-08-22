@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.overview",
   "name": "Overview",
-  "version": "1.1.7",
+  "version": "1.1.8",
   "author": "maiosx",
   "license": "MIT",
-  "description": "Fullscreen file search with a column card layout — Space to pin, Enter to open.",
+  "description": "Fullscreen file search with a column card layout - Space to Pin, Enter to close.",
   "kinds": ["overlay", "service", "bar-widget"],
   "keepLoaded": true,
   "entryPoints": {
