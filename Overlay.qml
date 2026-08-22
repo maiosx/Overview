@@ -314,6 +314,8 @@ Item {
     repeat: false
     onTriggered: {
       if (!root.opened || root.pinned || !root.heroImage) return
+      if (heroImg.status !== Image.Ready) return
+      if (heroImg.height <= heroClip.height + 4) return
       root.panArmed = true
       heroImg.y = 0
       heroPan.restart()
@@ -390,14 +392,15 @@ Item {
             cache: true
             opacity: 0.92
             sourceSize.width: 2048
-            sourceSize.height: 2048
             onSourceChanged: {
               y = 0
               heroPan.stop()
+              root.panArmed = false
             }
             onStatusChanged: {
-              if (status === Image.Ready)
-                y = 0
+              y = 0
+              if (status === Image.Ready && root.opened && !root.pinned)
+                panIdle.restart()
             }
           }
 
@@ -405,23 +408,23 @@ Item {
             id: heroPan
             running: false
             loops: Animation.Infinite
-            PauseAnimation { duration: 250 }
-            NumberAnimation {
-              target: heroImg
-              property: "y"
-              to: Math.min(0, heroClip.height - heroImg.height)
-              duration: Math.max(7000, Math.abs(heroClip.height - heroImg.height) * 38)
-              easing.type: Easing.InOutSine
-            }
             PauseAnimation { duration: 400 }
             NumberAnimation {
               target: heroImg
               property: "y"
-              to: 0
-              duration: Math.max(7000, Math.abs(heroClip.height - heroImg.height) * 38)
+              to: Math.min(0, heroClip.height - heroImg.height)
+              duration: Math.max(10000, Math.abs(heroClip.height - heroImg.height) * 50)
               easing.type: Easing.InOutSine
             }
-            PauseAnimation { duration: 250 }
+            PauseAnimation { duration: 700 }
+            NumberAnimation {
+              target: heroImg
+              property: "y"
+              to: 0
+              duration: Math.max(10000, Math.abs(heroClip.height - heroImg.height) * 50)
+              easing.type: Easing.InOutSine
+            }
+            PauseAnimation { duration: 400 }
           }
         }
 
