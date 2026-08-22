@@ -373,8 +373,8 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.topMargin: 22
         width: Math.min(parent.width - 72, 720)
-        height: 48
-        radius: 24
+        height: 44
+        radius: 22
         color: Qt.rgba(0, 0, 0, 0.55)
         border.width: 1
         border.color: searchField.activeFocus ? root.accent : Qt.rgba(1, 1, 1, 0.16)
@@ -382,22 +382,27 @@ Item {
 
         Text {
           anchors.fill: parent
-          anchors.leftMargin: 22
-          anchors.rightMargin: 22
+          leftPadding: 20
+          rightPadding: 20
           text: "Search files"
           visible: searchField.text.length === 0
           color: Qt.rgba(1, 1, 1, 0.38)
-          font.pixelSize: Style.font.body
+          font.pixelSize: 15
           verticalAlignment: Text.AlignVCenter
+          elide: Text.ElideRight
         }
         TextInput {
           id: searchField
           anchors.fill: parent
-          anchors.leftMargin: 22
-          anchors.rightMargin: 22
+          leftPadding: 20
+          rightPadding: 20
+          topPadding: 0
+          bottomPadding: 0
+          verticalAlignment: TextInput.AlignVCenter
           color: "white"
-          font.pixelSize: Style.font.body
+          font.pixelSize: 15
           clip: true
+          selectByMouse: true
           focus: true
           Keys.priority: Keys.BeforeItem
           Keys.onPressed: function(event) {
@@ -407,9 +412,9 @@ Item {
               event.accepted = true
             } else if (event.key === Qt.Key_Down) { root.moveSelection(0, 1); event.accepted = true }
             else if (event.key === Qt.Key_Up) { root.moveSelection(0, -1); event.accepted = true }
-            else if (event.key === Qt.Key_Right) { root.moveSelection(1, 0); event.accepted = true }
-            else if (event.key === Qt.Key_Left) { root.moveSelection(-1, 0); event.accepted = true }
-            else if (event.key === Qt.Key_Space) { root.pinToggle(); event.accepted = true }
+            else if (event.key === Qt.Key_Right && cursorPosition === text.length && selectedText.length === 0) { root.moveSelection(1, 0); event.accepted = true }
+            else if (event.key === Qt.Key_Left && cursorPosition === 0 && selectedText.length === 0) { root.moveSelection(-1, 0); event.accepted = true }
+            else if (event.key === Qt.Key_Space && text.length === 0) { root.pinToggle(); event.accepted = true }
             else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { root.openCurrent(); event.accepted = true }
           }
           onTextChanged: { root.queryText = text; debounce.restart() }
