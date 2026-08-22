@@ -21,11 +21,21 @@ Item {
     "home=$(cd \"$start\" 2>/dev/null && pwd -P || printf '%s' \"$start\"); " +
     "case \"$home\" in /home/*|/root) ;; *) exit 0 ;; esac; " +
     "ulimit -t 6 2>/dev/null; ulimit -v 262144 2>/dev/null; " +
-    "inside() { n=0; while IFS= read -r p; do " +
+    "inside() { n=0; ident=$(command -v identify || true); while IFS= read -r p; do " +
     "  [ -z \"$p\" ] && continue; " +
     "  d=$(dirname \"$p\"); b=$(basename \"$p\"); " +
     "  rp=$(cd \"$d\" 2>/dev/null && printf '%s/%s\\n' \"$(pwd -P)\" \"$b\" || printf '%s\\n' \"$p\"); " +
-    "  case \"$rp\" in \"$home\"|\"$home\"/*) printf '%s\\n' \"$rp\"; n=$((n+1)); [ \"$n\" -ge 36 ] && break ;; esac; " +
+    "  case \"$rp\" in \"$home\"|\"$home\"/*) ;; *) continue ;; esac; " +
+    "  if [ -n \"$ident\" ]; then " +
+    "    w=$(\"$ident\" -ping -format '%w' \"$rp\" 2>/dev/null || printf '0'); " +
+    "    h=$(\"$ident\" -ping -format '%h' \"$rp\" 2>/dev/null || printf '0'); " +
+    "    case \"$w\" in ''|*[!0-9]*) continue ;; esac; " +
+    "    case \"$h\" in ''|*[!0-9]*) continue ;; esac; " +
+    "    [ \"$w\" -gt 0 ] && [ \"$h\" -gt 0 ] || continue; " +
+    "    [ \"$w\" -le 8192 ] && [ \"$h\" -le 8192 ] || continue; " +
+    "    [ $((w*h)) -le 20000000 ] || continue; " +
+    "  fi; " +
+    "  printf '%s\\n' \"$rp\"; n=$((n+1)); [ \"$n\" -ge 36 ] && break; " +
     "done; }; " +
     "wrap() { if command -v timeout >/dev/null 2>&1; then timeout -k 1 5 \"$@\"; else \"$@\"; fi; }; " +
     "fd_bin=$(command -v fd || command -v fdfind || true); " +
