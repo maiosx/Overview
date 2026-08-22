@@ -51,15 +51,17 @@ Item {
   readonly property string recentBody: "start=\"$1\"; " +
     "home=$(cd \"$start\" 2>/dev/null && pwd -P || printf '%s' \"$start\"); " +
     "case \"$home\" in /home/*|/root) ;; *) exit 0 ;; esac; " +
+    "ulimit -t 4 2>/dev/null; ulimit -v 262144 2>/dev/null; " +
     "inside() { while IFS= read -r p; do " +
     "  [ -z \"$p\" ] && continue; " +
     "  d=$(dirname \"$p\"); b=$(basename \"$p\"); " +
     "  rp=$(cd \"$d\" 2>/dev/null && printf '%s/%s\\n' \"$(pwd -P)\" \"$b\" || printf '%s\\n' \"$p\"); " +
     "  case \"$rp\" in \"$home\"|\"$home\"/*) printf '%s\\n' \"$rp\" ;; esac; " +
     "done; }; " +
+    "wrap() { if command -v timeout >/dev/null 2>&1; then timeout -k 1 3 \"$@\"; else \"$@\"; fi; }; " +
     "fd_bin=$(command -v fd || command -v fdfind || true); " +
     "if [ -n \"$fd_bin\" ]; then " +
-    "  \"$fd_bin\" -a -t f --one-file-system --changed-within 30d --max-results 24 --max-depth 6 " +
+    "  wrap \"$fd_bin\" -a -t f --one-file-system --changed-within 30d --max-results 24 --max-depth 6 " +
     "    -E node_modules -E .git -E dist -E target -E __pycache__ -E .venv -E venv " +
     "    -E .cache -E .local -E .npm -E .cargo -E .flatpak " +
     "    . \"$home\" 2>/dev/null | inside; " +
@@ -70,13 +72,14 @@ Item {
     "  [ -d \"$home/$d\" ] && set -- \"$@\" \"$home/$d\"; " +
     "done; " +
     "if [ $# -eq 0 ]; then set -- \"$home\"; depth=1; else depth=2; fi; " +
-    "find -P \"$@\" -xdev -maxdepth \"$depth\" " +
+    "wrap find -P \"$@\" -xdev -maxdepth \"$depth\" " +
     "  \\( -name node_modules -o -name .git -o -name dist -o -name target -o -name .venv -o -name .cache -o -name .local \\) -prune " +
     "  -o -type f -printf '%T@ %p\\n' 2>/dev/null | " +
-    "awk 'BEGIN{n=0} { t=$1+0; sub(/^[^ ]+[ ]/,\"\"); " +
-    "  if (n<24) { n++; ts[n]=t; ps[n]=$0; next } " +
-    "  mi=1; for (i=2;i<=24;i++) if (ts[i]<ts[mi]) mi=i; " +
-    "  if (t>ts[mi]) { ts[mi]=t; ps[mi]=$0 } } " +
+    "awk 'BEGIN{n=0; seen=0} { " +
+    "  seen++; t=$1+0; sub(/^[^ ]+[ ]/,\"\"); " +
+    "  if (n<24) { n++; ts[n]=t; ps[n]=$0 } " +
+    "  else { mi=1; for (i=2;i<=24;i++) if (ts[i]<ts[mi]) mi=i; if (t>ts[mi]) { ts[mi]=t; ps[mi]=$0 } } " +
+    "  if (seen>=400) exit } " +
     "END { for (i=1;i<=n;i++) printf \"%.6f %s\\n\", ts[i], ps[i] }' | " +
     "sort -nr | head -n 24 | cut -d' ' -f2- | inside"
 
@@ -231,6 +234,7 @@ Item {
     searchProc.running = true
     root.searchRunning = true
     root.lastStatus = "searching"
+    searchKill.restart()
   }
   function applyTextPreview(raw) {
     var s = String(raw || "")
@@ -531,12 +535,27 @@ Item {
     stdout: StdioCollector {
       id: searchOut
       waitForEnd: true
-      onStreamFinished: { root.applyPathList(text, "search"); root.searchRunning = false }
+      onStreamFinished: {
+        searchKill.stop()
+        root.searchRunning = false
+        root.applyPathList(text, root.backend || "search")
+      }
     }
     onExited: function(code) {
+      searchKill.stop()
       root.searchRunning = false
       var collected = String(searchOut.text || "")
-      if (root.lastStatus === "searching") root.applyPathList(collected, "search")
+      if (root.lastStatus === "searching")
+        root.applyPathList(collected, root.backend || "search")
+    }
+  }
+  Timer {
+    id: searchKill
+    interval: 4000
+    repeat: false
+    onTriggered: {
+      if (searchProc.running)
+        searchProc.running = false
     }
   }
   Process {
