@@ -4,6 +4,8 @@ var IMAGE_EXT = { png: 1, jpg: 1, jpeg: 1, webp: 1, svg: 1, gif: 1, bmp: 1 }
 var PDF_EXT = { pdf: 1 }
 var CSV_EXT = { csv: 1, tsv: 1 }
 var CODE_EXT = { rs: 1, js: 1, ts: 1, py: 1, go: 1, md: 1, qml: 1, json: 1, sh: 1, lua: 1, txt: 1, toml: 1, yml: 1, yaml: 1, css: 1, html: 1, c: 1, h: 1, cpp: 1 }
+var VIDEO_EXT = { mp4: 1, mkv: 1, webm: 1, mov: 1, avi: 1, m4v: 1, wmv: 1, mpeg: 1, mpg: 1, m2ts: 1, ts: 1, flv: 1, ogv: 1, mts: 1 }
+var ZIP_EXT = { zip: 1, jar: 1, apk: 1, whl: 1, egg: 1, crx: 1, xpi: 1 }
 
 function extOf(path) {
   var s = String(path || "")
@@ -23,18 +25,38 @@ function dirname(path) {
   if (slash <= 0) return slash === 0 ? "/" : ""
   return s.slice(0, slash)
 }
+function cacheKey(path) {
+  return basename(path).replace(/[^A-Za-z0-9._-]/g, "_")
+}
+function videoThumbPath(path, home) {
+  var h = String(home || "")
+  if (!h.length) return ""
+  return h + "/.cache/overview/vid/" + cacheKey(path) + ".jpg"
+}
+function isArchiveName(path) {
+  var s = String(path || "").toLowerCase()
+  if (s.indexOf(".tar.gz") === s.length - 7 && s.length > 7) return true
+  if (s.indexOf(".tar.bz2") === s.length - 8 && s.length > 8) return true
+  if (s.indexOf(".tar.xz") === s.length - 7 && s.length > 7) return true
+  var ext = extOf(s)
+  return !!ZIP_EXT[ext] || ext === "tar" || ext === "tgz" || ext === "tbz" || ext === "tbz2" || ext === "txz" || ext === "7z" || ext === "rar"
+}
 function kindOf(path, isDir) {
   if (isDir) return "dir"
   var ext = extOf(path)
   if (IMAGE_EXT[ext]) return "image"
+  if (VIDEO_EXT[ext]) return "video"
   if (PDF_EXT[ext]) return "pdf"
+  if (isArchiveName(path)) return "zip"
   if (CSV_EXT[ext]) return "csv"
   if (CODE_EXT[ext]) return "code"
   return "hex"
 }
 function glyphFor(kind) {
   if (kind === "image") return "▣"
+  if (kind === "video") return "▶"
   if (kind === "pdf") return "▤"
+  if (kind === "zip") return "▣"
   if (kind === "csv") return "▦"
   if (kind === "code") return "⌘"
   if (kind === "dir") return "▢"
@@ -42,16 +64,19 @@ function glyphFor(kind) {
 }
 function kindLabel(kind) {
   if (kind === "image") return "Image"
+  if (kind === "video") return "Video"
   if (kind === "pdf") return "PDF"
+  if (kind === "zip") return "Archive"
   if (kind === "csv") return "Table"
   if (kind === "code") return "Code"
   if (kind === "dir") return "Folder"
-  if (kind === "video") return "Video"
   return "File"
 }
 function kindTint(kind) {
   if (kind === "image") return "#3d2a4a"
+  if (kind === "video") return "#1a2438"
   if (kind === "pdf") return "#3a221c"
+  if (kind === "zip") return "#2a2418"
   if (kind === "csv") return "#1c3328"
   if (kind === "code") return "#1c2a3d"
   if (kind === "dir") return "#2a2a20"
@@ -85,6 +110,18 @@ function displayText(s) {
   var out = ""
   for (var i = 0; i < t.length && i < 512; i++) {
     var c = t.charCodeAt(i)
+    if (c < 32 || c === 127) continue
+    out += t.charAt(i)
+  }
+  return out
+}
+function previewText(s, maxLen) {
+  var t = String(s || "")
+  var cap = maxLen > 0 ? maxLen : 200000
+  var out = ""
+  for (var i = 0; i < t.length && out.length < cap; i++) {
+    var c = t.charCodeAt(i)
+    if (c === 9 || c === 10 || c === 13) { out += t.charAt(i); continue }
     if (c < 32 || c === 127) continue
     out += t.charAt(i)
   }

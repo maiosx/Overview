@@ -51,7 +51,16 @@ Item {
     if (hit && hit.path) return Format.kindOf(hit.path, false)
     return String(root.previewResult && root.previewResult.kind ? root.previewResult.kind : "")
   }
-  readonly property bool heroImage: root.heroKind === "image" && root.heroPath.length > 0
+  readonly property string heroThumb: {
+    if (root.heroKind === "image") return root.heroPath
+    if (root.heroKind === "video") {
+      var t = String(root.previewResult && root.previewResult.thumb ? root.previewResult.thumb : "")
+      if (t.length) return t
+      return Format.videoThumbPath(root.heroPath, root.homePrefix || Quickshell.env("HOME") || "")
+    }
+    return ""
+  }
+  readonly property bool heroImage: (root.heroKind === "image" || root.heroKind === "video") && root.heroThumb.length > 0
   readonly property string locationLabel: {
     var p = String(root.activePath || "")
     if (!p.length) return ""
@@ -195,7 +204,7 @@ Item {
     var prev = Number(snap.previewRevision)
     if (!isNaN(prev) && prev !== root.lastPreviewRev) {
       root.lastPreviewRev = prev
-      if (!root.heroImage) {
+      if (root.heroKind !== "image") {
         root.previewResult = snap.preview || {}
         root.previewLoading = false
       }
@@ -382,7 +391,7 @@ Item {
               if (sw <= 0 || sh <= 0) return heroClip.height
               return width * sh / sw
             }
-            source: root.heroImage ? Format.fileUrl(root.heroPath) : ""
+            source: root.heroImage ? (Format.fileUrl(root.heroThumb) + (root.previewResult && root.previewResult.stamp ? ("#" + root.previewResult.stamp) : "")) : ""
             fillMode: Image.PreserveAspectFit
             asynchronous: true
             cache: true

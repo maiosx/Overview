@@ -18,13 +18,13 @@ Item {
   property bool selectable: true
   readonly property string kind: String(preview && preview.kind ? preview.kind : "")
   readonly property string bodyText: {
-    if (preview && preview.text) return Format.displayText(String(preview.text).slice(0, 200000))
-    if (preview && preview.hex) return Format.displayText(String(preview.hex).slice(0, 4096))
+    if (preview && preview.text) return Format.previewText(String(preview.text).slice(0, 200000))
+    if (preview && preview.hex) return Format.previewText(String(preview.hex).slice(0, 4096))
     if (preview && preview.html)
       return String(preview.html).replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
     return String((preview && preview.label) || "")
   }
-  readonly property bool showText: root.kind === "code" || root.kind === "csv" || root.kind === "hex" || root.kind === "video"
+  readonly property bool showText: root.kind === "code" || root.kind === "csv" || root.kind === "hex" || root.kind === "zip"
   readonly property var pdfPages: preview && preview.pages && preview.pages.length ? preview.pages : []
 
   Rectangle {
@@ -166,6 +166,17 @@ Item {
           enabled: root.selectable
         }
       }
+    }
+
+    Text {
+      anchors.centerIn: parent
+      width: parent.width - 40
+      visible: root.kind === "zip" && preview.need_tool && !root.bodyText.length
+      text: "install unzip or bsdtar to list archives"
+      textFormat: Text.PlainText
+      color: root.foreground
+      wrapMode: Text.WordWrap
+      horizontalAlignment: Text.AlignHCenter
     }
 
     Text {

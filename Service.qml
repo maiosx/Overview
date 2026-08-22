@@ -22,6 +22,7 @@ Item {
   property string diskLabel: ""
   property real diskUsedFrac: 0
   property double diskTotal: 0
+  property var videoQueue: []
 
   readonly property int previewBytes: 200000
 
@@ -93,6 +94,32 @@ Item {
     "\"$conv\" \"$src\" -resize '4472x4472>' \"$out\" 2>/dev/null && [ -f \"$out\" ] && printf '%s' \"$out\" && exit 0; " +
     "printf '%s' \"$src\""
 
+  readonly property string videoBody: "src=\"$1\"; out=\"$2\"; " +
+    "ff=$(command -v ffmpeg || true); " +
+    "if [ -z \"$ff\" ]; then exit 0; fi; " +
+    "ulimit -t 8 2>/dev/null; ulimit -v 1048576 2>/dev/null; ulimit -f 8192 2>/dev/null; " +
+    "mkdir -p \"$(dirname \"$out\")\" || exit 0; " +
+    "grab() { if command -v timeout >/dev/null 2>&1; then timeout -k 1 7 \"$ff\" -hide_banner -loglevel error -nostdin -y -ss \"$1\" -i \"$src\" -frames:v 1 -vf 'scale=640:-2' -q:v 3 \"$out\" >/dev/null 2>&1; " +
+    "else \"$ff\" -hide_banner -loglevel error -nostdin -y -ss \"$1\" -i \"$src\" -frames:v 1 -vf 'scale=640:-2' -q:v 3 \"$out\" >/dev/null 2>&1; fi; }; " +
+    "grab 1; " +
+    "if [ ! -s \"$out\" ]; then grab 0; fi; " +
+    "if [ -s \"$out\" ]; then printf '%s' \"$out\"; fi"
+
+  readonly property string zipBody: "src=\"$1\"; " +
+    "ulimit -t 4 2>/dev/null; ulimit -v 262144 2>/dev/null; " +
+    "{ listed=0; " +
+    "  case \"$src\" in " +
+    "    *.zip|*.ZIP|*.jar|*.apk|*.whl|*.egg|*.crx|*.xpi) " +
+    "      if command -v zipinfo >/dev/null 2>&1; then zipinfo -1 \"$src\" 2>/dev/null; listed=1; " +
+    "      elif command -v unzip >/dev/null 2>&1; then unzip -Z1 \"$src\" 2>/dev/null; listed=1; " +
+    "      elif command -v bsdtar >/dev/null 2>&1; then bsdtar -tf \"$src\" 2>/dev/null; listed=1; fi ;; " +
+    "    *) " +
+    "      if command -v bsdtar >/dev/null 2>&1; then bsdtar -tf \"$src\" 2>/dev/null; listed=1; " +
+    "      elif command -v tar >/dev/null 2>&1; then tar -tf \"$src\" 2>/dev/null; listed=1; fi ;; " +
+    "  esac; " +
+    "  if [ \"$listed\" = 0 ]; then printf '%s\\n' ZIP_TOOL_MISSING; fi; " +
+    "} | head -n 400 | head -c 200000"
+
   function underHome(p) {
     var home = String(root.home || "")
     if (home.length < 6 || home === "/" || home === "/home") return false
@@ -127,6 +154,7 @@ Item {
     root.backend = usedBackend || "search"
     root.resultsRevision += 1
     root.lastStatus = "hits:" + hits.length
+    root.enqueueVideoThumbs(hits)
   }
   function diskHuman(n) {
     var v = Number(n) || 0
@@ -223,6 +251,23 @@ Item {
       root.lastPreview = { kind: "pdf", path: p, pages: [], label: Format.basename(p) }
       return String(root.previewRevision + 1)
     }
+    if (kind === "video") {
+      if (videoProc.running) videoProc.running = false
+      videoKill.restart()
+      var vout = Format.videoThumbPath(p, root.home)
+      videoProc.command = ["sh", "-c", root.videoBody, "overview-video", p, vout]
+      videoProc.running = true
+      root.lastPreview = { kind: "video", path: p, thumb: vout, label: Format.basename(p) }
+      return String(root.previewRevision + 1)
+    }
+    if (kind === "zip") {
+      if (zipProc.running) zipProc.running = false
+      zipKill.restart()
+      zipProc.command = ["sh", "-c", root.zipBody, "overview-zip", p]
+      zipProc.running = true
+      root.lastPreview = { kind: "zip", path: p, text: "", label: Format.basename(p) }
+      return String(root.previewRevision + 1)
+    }
     if (textProc.running) textProc.running = false
     readKill.restart()
     textProc.command = ["sh", "-c", root.readBody, "overview-read", p]
@@ -264,6 +309,27 @@ Item {
       diskUsedFrac: root.diskUsedFrac,
       diskTotal: root.diskTotal
     })
+  }
+  function enqueueVideoThumbs(hits) {
+    var q = []
+    for (var i = 0; i < hits.length; i++) {
+      var hit = hits[i]
+      if (!hit || hit.kind !== "video" || !hit.path) continue
+      var out = Format.videoThumbPath(hit.path, root.home)
+      if (!out.length) continue
+      q.push({ src: String(hit.path), out: out })
+    }
+    root.videoQueue = q
+    Qt.callLater(root.runThumbQueue)
+  }
+  function runThumbQueue() {
+    if (thumbProc.running) return
+    if (!root.videoQueue.length) return
+    var job = root.videoQueue[0]
+    root.videoQueue = root.videoQueue.slice(1)
+    if (!job || !root.underHome(job.src)) { Qt.callLater(root.runThumbQueue); return }
+    thumbProc.command = ["sh", "-c", root.videoBody, "overview-vthumb", job.src, job.out]
+    thumbProc.running = true
   }
   Process {
     id: imageProc
@@ -350,6 +416,75 @@ Item {
     interval: 10000
     repeat: false
     onTriggered: { if (pdfProc.running) pdfProc.running = false }
+  }
+  Process {
+    id: videoProc
+    running: false
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        videoKill.stop()
+        var out = String(text || "").replace(/^\s+|\s+$/g, "")
+        if (!out.length || out.indexOf(root.home + "/.cache/overview/") !== 0)
+          out = Format.videoThumbPath(root.previewPath, root.home)
+        root.lastPreview = {
+          kind: "video",
+          path: root.previewPath,
+          thumb: out,
+          stamp: Date.now(),
+          label: Format.basename(root.previewPath)
+        }
+        root.previewRevision += 1
+      }
+    }
+    onExited: videoKill.stop()
+  }
+  Timer {
+    id: videoKill
+    interval: 8000
+    repeat: false
+    onTriggered: { if (videoProc.running) videoProc.running = false }
+  }
+  Process {
+    id: zipProc
+    running: false
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        zipKill.stop()
+        var t = String(text || "")
+        if (t.indexOf("ZIP_TOOL_MISSING") === 0) {
+          root.lastPreview = {
+            kind: "zip",
+            path: root.previewPath,
+            need_tool: true,
+            text: "install unzip or libarchive (bsdtar) to list archives",
+            label: Format.basename(root.previewPath)
+          }
+        } else {
+          root.lastPreview = {
+            kind: "zip",
+            path: root.previewPath,
+            text: t,
+            label: Format.basename(root.previewPath)
+          }
+        }
+        root.previewRevision += 1
+      }
+    }
+    onExited: zipKill.stop()
+  }
+  Timer {
+    id: zipKill
+    interval: 5000
+    repeat: false
+    onTriggered: { if (zipProc.running) zipProc.running = false }
+  }
+  Process {
+    id: thumbProc
+    running: false
+    stdout: StdioCollector { waitForEnd: true }
+    onExited: Qt.callLater(root.runThumbQueue)
   }
   Process {
     id: searchProc
