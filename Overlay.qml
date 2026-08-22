@@ -39,8 +39,19 @@ Item {
   property string activePath: ""
   property string locFlash: ""
   readonly property int columns: 3
-  readonly property string heroKind: String(root.previewResult && root.previewResult.kind ? root.previewResult.kind : "")
-  readonly property bool heroImage: root.heroKind === "image" && String(root.previewResult.path || "").length > 0
+  property bool panArmed: false
+  readonly property string heroPath: {
+    var hit = root.currentHit()
+    if (hit && hit.path) return String(hit.path)
+    return String(root.activePath || "")
+  }
+  readonly property string heroKind: {
+    var hit = root.currentHit()
+    if (hit && hit.kind) return String(hit.kind)
+    if (hit && hit.path) return Format.kindOf(hit.path, false)
+    return String(root.previewResult && root.previewResult.kind ? root.previewResult.kind : "")
+  }
+  readonly property bool heroImage: root.heroKind === "image" && root.heroPath.length > 0
   readonly property string locationLabel: {
     var p = String(root.activePath || "")
     if (!p.length) return ""
@@ -155,9 +166,19 @@ Item {
     if (next.length) {
       if (root.selectedIndex >= next.length) root.selectedIndex = 0
       var hit = next[root.selectedIndex]
-      if (hit && hit.path) root.requestPreview(hit.path, 1)
+      var p = hit && hit.path ? String(hit.path) : ""
+      var kind = hit && hit.kind ? String(hit.kind) : Format.kindOf(p, false)
+      root.activePath = p
+      root.armPanLater()
+      if (kind === "image") {
+        root.previewResult = Format.localPreview(p)
+        root.previewLoading = false
+      } else if (hit && hit.path) {
+        root.requestPreview(p, 1)
+      }
     } else {
       root.previewResult = ({})
+      root.activePath = ""
     }
   }
   function applySnapshot(raw) {
@@ -174,8 +195,10 @@ Item {
     var prev = Number(snap.previewRevision)
     if (!isNaN(prev) && prev !== root.lastPreviewRev) {
       root.lastPreviewRev = prev
-      root.previewResult = snap.preview || {}
-      root.previewLoading = false
+      if (!root.heroImage) {
+        root.previewResult = snap.preview || {}
+        root.previewLoading = false
+      }
     }
     if (snap.home) root.homePrefix = String(snap.home)
     if (snap.diskLabel !== undefined) root.diskLabel = String(snap.diskLabel || "")
@@ -189,12 +212,30 @@ Item {
     root.previewLoading = true
     root.callIpc("preview", JSON.stringify({ path: path, page: page || 1 }))
   }
+  function armPanLater() {
+    root.panArmed = false
+    if (typeof heroPan !== "undefined")
+      heroPan.stop()
+    if (typeof heroImg !== "undefined")
+      heroImg.y = 0
+    panIdle.restart()
+  }
   function selectIndex(i) {
     if (!root.results.length) return
     if (i < 0) i = 0
     if (i >= root.results.length) i = root.results.length - 1
     root.selectedIndex = i
-    root.requestPreview(root.results[i].path, 1)
+    var hit = root.results[i]
+    var p = hit && hit.path ? String(hit.path) : ""
+    var kind = hit && hit.kind ? String(hit.kind) : Format.kindOf(p, false)
+    root.activePath = p
+    root.armPanLater()
+    if (kind === "image") {
+      root.previewResult = Format.localPreview(p)
+      root.previewLoading = false
+    } else {
+      root.requestPreview(p, 1)
+    }
   }
   function moveSelection(dx, dy) {
     if (!root.results.length) return
@@ -266,6 +307,17 @@ Item {
     onTriggered: root.locFlash = ""
   }
   Timer {
+    id: panIdle
+    interval: 2200
+    repeat: false
+    onTriggered: {
+      if (!root.opened || root.pinned || !root.heroImage) return
+      root.panArmed = true
+      heroImg.y = 0
+      heroPan.restart()
+    }
+  }
+  Timer {
     id: debounce
     interval: 80
     repeat: false
@@ -330,25 +382,24 @@ Item {
               if (sw <= 0 || sh <= 0) return heroClip.height
               return width * sh / sw
             }
-            source: root.heroImage ? Format.fileUrl(root.previewResult.path) : ""
+            source: root.heroImage ? Format.fileUrl(root.heroPath) : ""
             fillMode: Image.PreserveAspectFit
             asynchronous: true
             cache: true
             opacity: 0.92
-            onStatusChanged: {
-              y = 0
-              if (status === Image.Ready)
-                heroPan.restart()
-            }
             onSourceChanged: {
               y = 0
-              heroPan.restart()
+              heroPan.stop()
+            }
+            onStatusChanged: {
+              if (status === Image.Ready)
+                y = 0
             }
           }
 
           SequentialAnimation {
             id: heroPan
-            running: root.opened && !root.pinned && root.heroImage && heroImg.status === Image.Ready && heroImg.height > heroClip.height + 4
+            running: false
             loops: Animation.Infinite
             PauseAnimation { duration: 800 }
             NumberAnimation {
