@@ -2,6 +2,8 @@
 
 Omarchy shell plugin: search your home folder and preview files from the bar.
 
+![Overview](preview.png)
+
 Fuzzy-find any file and preview it instantly: images, code, PDFs, CSVs — Space to pin, Enter to open.
 
 ## Install as an Omarchy plugin
