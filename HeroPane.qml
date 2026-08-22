@@ -144,12 +144,25 @@ Item {
   }
 
   Rectangle {
-    anchors.fill: parent
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    height: Math.round(parent.height * 0.18)
     visible: !hero.cinema
     gradient: Gradient {
-      GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.35) }
-      GradientStop { position: 0.45; color: Qt.rgba(0, 0, 0, 0.05) }
-      GradientStop { position: 1.0; color: Qt.rgba(hero.background.r, hero.background.g, hero.background.b, 0.96) }
+      GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.32) }
+      GradientStop { position: 1.0; color: "transparent" }
+    }
+  }
+  Rectangle {
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    height: Math.round(parent.height * 0.26)
+    visible: !hero.cinema
+    gradient: Gradient {
+      GradientStop { position: 0.0; color: "transparent" }
+      GradientStop { position: 1.0; color: Qt.rgba(hero.background.r, hero.background.g, hero.background.b, 0.88) }
     }
   }
 
