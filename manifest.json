@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.overview",
   "name": "Overview",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "author": "maiosx",
   "license": "MIT",
   "description": "Fullscreen file search with a column card layout - Space to Pin, Enter to close.",

@@ -65,7 +65,20 @@ Item {
     "    . \"$home\" 2>/dev/null | inside; " +
     "  exit 0; " +
     "fi; " +
-    "find -P \"$home\" -xdev -maxdepth 3 -type f -printf '%T@ %p\\n' 2>/dev/null | sort -nr | head -n 24 | cut -d' ' -f2- | inside"
+    "set --; " +
+    "for d in Downloads Pictures Documents Desktop Videos Music; do " +
+    "  [ -d \"$home/$d\" ] && set -- \"$@\" \"$home/$d\"; " +
+    "done; " +
+    "if [ $# -eq 0 ]; then set -- \"$home\"; depth=1; else depth=2; fi; " +
+    "find -P \"$@\" -xdev -maxdepth \"$depth\" " +
+    "  \\( -name node_modules -o -name .git -o -name dist -o -name target -o -name .venv -o -name .cache -o -name .local \\) -prune " +
+    "  -o -type f -printf '%T@ %p\\n' 2>/dev/null | " +
+    "awk 'BEGIN{n=0} { t=$1+0; sub(/^[^ ]+[ ]/,\"\"); " +
+    "  if (n<24) { n++; ts[n]=t; ps[n]=$0; next } " +
+    "  mi=1; for (i=2;i<=24;i++) if (ts[i]<ts[mi]) mi=i; " +
+    "  if (t>ts[mi]) { ts[mi]=t; ps[mi]=$0 } } " +
+    "END { for (i=1;i<=n;i++) printf \"%.6f %s\\n\", ts[i], ps[i] }' | " +
+    "sort -nr | head -n 24 | cut -d' ' -f2- | inside"
 
   readonly property string readBody: "head -c 200000 \"$1\""
 
