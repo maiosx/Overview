@@ -30,28 +30,33 @@ Item {
     "home=$(cd \"$start\" 2>/dev/null && pwd -P || printf '%s' \"$start\"); " +
     "case \"$home\" in /home/*|/root) ;; *) exit 0 ;; esac; " +
     "if [ -z \"$q\" ] || [ ! -d \"$home\" ]; then exit 0; fi; " +
-    "inside() { while IFS= read -r p; do " +
+    "ulimit -t 4 2>/dev/null; ulimit -v 262144 2>/dev/null; " +
+    "trap 'trap - EXIT TERM INT; kill 0 2>/dev/null' EXIT TERM INT; " +
+    "inside() { n=0; while IFS= read -r p; do " +
     "  [ -z \"$p\" ] && continue; " +
     "  d=$(dirname \"$p\"); b=$(basename \"$p\"); " +
     "  rp=$(cd \"$d\" 2>/dev/null && printf '%s/%s\\n' \"$(pwd -P)\" \"$b\" || printf '%s\\n' \"$p\"); " +
-    "  case \"$rp\" in \"$home\"|\"$home\"/*) printf '%s\\n' \"$rp\" ;; esac; " +
+    "  case \"$rp\" in \"$home\"|\"$home\"/*) printf '%s\\n' \"$rp\"; n=$((n+1)); [ \"$n\" -ge 24 ] && break ;; esac; " +
     "done; }; " +
+    "wrap() { if command -v timeout >/dev/null 2>&1; then timeout -k 1 3 \"$@\"; else \"$@\"; fi; }; " +
     "fd_bin=$(command -v fd || command -v fdfind || true); " +
     "if [ -n \"$fd_bin\" ]; then " +
-    "  \"$fd_bin\" -a -i -F -t f --one-file-system --max-results 24 --max-depth 8 " +
+    "  wrap \"$fd_bin\" -a -i -F -t f --one-file-system --max-results 24 --max-depth 8 " +
     "    -E node_modules -E .git -E dist -E target -E __pycache__ -E .venv -E venv " +
     "    -E .cache -E .local -E .npm -E .cargo -E .flatpak " +
     "    -- \"$q\" \"$home\" 2>/dev/null | inside; " +
     "  exit 0; " +
     "fi; " +
-    "find -P \"$home\" -xdev -maxdepth 8 " +
+    "wrap find -P \"$home\" -xdev -maxdepth 8 " +
     "  \\( -name node_modules -o -name .git -o -name dist -o -name target -o -name .venv -o -name .cache -o -name .local \\) -prune " +
-    "  -o -type f -iname \"*$q*\" -print 2>/dev/null | inside | head -n 24"
+    "  -o -type f -iname \"*$q*\" -print 2>/dev/null | " +
+    "awk 'BEGIN{n=0} { print; n++; if (n>=24) exit }' | inside"
 
   readonly property string recentBody: "start=\"$1\"; " +
     "home=$(cd \"$start\" 2>/dev/null && pwd -P || printf '%s' \"$start\"); " +
     "case \"$home\" in /home/*|/root) ;; *) exit 0 ;; esac; " +
     "ulimit -t 4 2>/dev/null; ulimit -v 262144 2>/dev/null; " +
+    "trap 'trap - EXIT TERM INT; kill 0 2>/dev/null' EXIT TERM INT; " +
     "inside() { while IFS= read -r p; do " +
     "  [ -z \"$p\" ] && continue; " +
     "  d=$(dirname \"$p\"); b=$(basename \"$p\"); " +
