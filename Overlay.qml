@@ -62,7 +62,11 @@ Item {
   readonly property string heroThumb: {
     if (root.heroKind === "image") {
       if (root.previewResult && root.previewResult.blocked) return ""
-      return String(root.previewResult && root.previewResult.path ? root.previewResult.path : "")
+      if (root.cinema)
+        return String(root.previewResult && root.previewResult.path ? root.previewResult.path : "")
+      var hit = root.currentHit()
+      if (hit && hit.path) return String(hit.path)
+      return String(root.activePath || "")
     }
     if (root.heroKind === "video") {
       var t = String(root.previewResult && root.previewResult.thumb ? root.previewResult.thumb : "")
@@ -112,7 +116,7 @@ Item {
     root.cinemaTries = 0
     root.enableLayerBlur()
     root.requestQuery("")
-    root.callIpc("queryImages", "")
+    imageIndex.refresh()
     idleTimer.restart()
     Qt.callLater(function() { overlayWin.focusSearch() })
   }
@@ -220,16 +224,31 @@ Item {
     }
     var prev = Number(snap.previewRevision)
     if (!isNaN(prev) && prev !== root.lastPreviewRev) {
-      root.lastPreviewRev = prev
-      root.previewResult = snap.preview || {}
-      root.previewLoading = false
-      root.queueHero(root.heroThumb)
+      var pv = snap.preview || {}
+      if (root.previewMatches(pv)) {
+        root.lastPreviewRev = prev
+        root.previewResult = pv
+        root.previewLoading = false
+        root.queueHero(root.heroThumb)
+      } else {
+        root.lastPreviewRev = prev
+      }
     }
     if (snap.home) root.homePrefix = String(snap.home)
     if (snap.diskLabel !== undefined) root.diskLabel = String(snap.diskLabel || "")
     if (snap.diskUsedFrac !== undefined) root.diskUsedFrac = Number(snap.diskUsedFrac) || 0
     if (snap.images && snap.images.length)
       root.cinemaPool = snap.images
+  }
+  function previewMatches(pv) {
+    if (root.cinema) return true
+    var want = String(root.activePath || "")
+    if (!want.length || !pv) return true
+    var pp = String(pv.path || "")
+    if (pp === want) return true
+    var lab = String(pv.label || "")
+    if (lab.length && lab === Format.basename(want)) return true
+    return false
   }
   function requestQuery(q) { root.callIpc("query", q) }
   function requestPreview(path, page) {
@@ -284,7 +303,7 @@ Item {
     if (!root.opened || root.pinned || root.cinema) return
     var hits = root.imageHits()
     if (!hits.length) {
-      root.callIpc("queryImages", "")
+      imageIndex.refresh()
       if (root.cinemaTries < 5) {
         root.cinemaTries += 1
         cinemaRetry.restart()
@@ -303,10 +322,34 @@ Item {
     if (!root.cinema) return
     root.cinema = false
     slideTimer.stop()
+    root.pendingThumb = ""
+    root.lastPreviewRev = -1
+    if (typeof overlayWin !== "undefined") overlayWin.stopPan()
     if (root.results && root.cinemaSavedIndex >= 0 && root.cinemaSavedIndex < root.results.length)
       root.selectIndex(root.cinemaSavedIndex)
+    root.reloadHero()
     idleTimer.restart()
     Qt.callLater(function() { overlayWin.focusSearch() })
+  }
+  function reloadHero() {
+    if (typeof overlayWin !== "undefined") overlayWin.stopPan()
+    var t = root.heroThumb
+    if (!t.length) {
+      if (root.heroKind === "image") {
+        var hit = root.currentHit()
+        t = hit && hit.path ? String(hit.path) : String(root.activePath || "")
+      }
+    }
+    if (!t.length) {
+      root.shownThumb = ""
+      root.pendingThumb = ""
+      return
+    }
+    if (t === root.shownThumb) {
+      if (typeof overlayWin !== "undefined") overlayWin.startPanSoon()
+      return
+    }
+    root.queueHero(t)
   }
   function slideNext() {
     var hits = root.imageHits()
@@ -432,5 +475,13 @@ Item {
   OverlayWindow {
     id: overlayWin
     host: root
+  }
+  ImageIndex {
+    id: imageIndex
+    home: root.homePrefix.length ? root.homePrefix : (Quickshell.env("HOME") || "")
+    onReady: {
+      if (images && images.length)
+        root.cinemaPool = images
+    }
   }
 }
