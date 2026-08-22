@@ -309,6 +309,8 @@ Item {
           visible: root.heroImage
           source: root.heroImage ? Format.fileUrl(root.previewResult.path) : ""
           fillMode: Image.PreserveAspectCrop
+          horizontalAlignment: Image.AlignHCenter
+          verticalAlignment: Image.AlignTop
           asynchronous: true
           cache: true
           opacity: 0.92
