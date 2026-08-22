@@ -243,6 +243,8 @@ Item {
     var p = String(path || "")
     if (!p.length) return
     if (p !== root.pendingThumb && p !== root.heroThumb) return
+    if (typeof heroPan !== "undefined")
+      heroPan.stop()
     root.shownThumb = p
     root.pendingThumb = ""
     if (typeof heroImg !== "undefined")
@@ -341,8 +343,9 @@ Item {
       if (!root.opened || root.pinned || !root.heroImage) return
       if (heroImg.status !== Image.Ready) return
       if (heroImg.height <= heroClip.height + 4) return
-      root.panArmed = true
+      heroPan.stop()
       heroImg.y = 0
+      root.panArmed = true
       heroPan.restart()
     }
   }
@@ -437,11 +440,15 @@ Item {
             opacity: 0.92
             sourceSize.width: 2048
             onSourceChanged: {
+              heroPan.stop()
               y = 0
             }
             onStatusChanged: {
-              if (status === Image.Ready && root.opened && !root.pinned)
-                panIdle.restart()
+              if (status === Image.Ready) {
+                y = 0
+                if (root.opened && !root.pinned)
+                  panIdle.restart()
+              }
             }
           }
 
@@ -449,23 +456,24 @@ Item {
             id: heroPan
             running: false
             loops: Animation.Infinite
-            PauseAnimation { duration: 400 }
+            PauseAnimation { duration: 1000 }
             NumberAnimation {
               target: heroImg
               property: "y"
+              from: 0
               to: Math.min(0, heroClip.height - heroImg.height)
-              duration: Math.max(10000, Math.abs(heroClip.height - heroImg.height) * 50)
+              duration: 2200
               easing.type: Easing.InOutSine
             }
-            PauseAnimation { duration: 700 }
+            PauseAnimation { duration: 500 }
             NumberAnimation {
               target: heroImg
               property: "y"
               to: 0
-              duration: Math.max(10000, Math.abs(heroClip.height - heroImg.height) * 50)
+              duration: 2200
               easing.type: Easing.InOutSine
             }
-            PauseAnimation { duration: 400 }
+            PauseAnimation { duration: 700 }
           }
         }
 
