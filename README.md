@@ -19,6 +19,14 @@ Reload if the shell was already running:
 ```sh
 omarchy-shell shell rescanPlugins
 ```
+Add a Hyprland binding to `~/.config/hypr/bindings.lua`:
+
+```lua
+o.bind("SUPER + A", "Overview", "omarchy-shell shell toggle io.github.overview")
+```
+
+Choose any unused chord if `SUPER + A` is already bound.
+
 
 ### Manual zip download
 
