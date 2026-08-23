@@ -42,6 +42,15 @@ Item {
       opacity: 0.7
     }
 
+    AudioPane {
+      anchors.fill: parent
+      visible: root.kind === "audio"
+      preview: root.preview
+      autoplay: root.autoplay
+      foreground: root.foreground
+      accent: root.accent
+    }
+
     Image {
       anchors.fill: parent
       anchors.margins: 12
