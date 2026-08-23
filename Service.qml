@@ -22,6 +22,7 @@ Item {
   property string diskLabel: ""
   property real diskUsedFrac: 0
   property double diskTotal: 0
+  property var lastImages: []
   property var videoQueue: []
 
   readonly property int previewBytes: 200000
@@ -86,6 +87,36 @@ Item {
     "END { for (i=1;i<=n;i++) printf \"%.6f %s\\n\", ts[i], ps[i] }' | " +
     "sort -nr | head -n 24 | cut -d' ' -f2- | inside"
 
+  readonly property string imageSearchBody: "start=\"$1\"; " +
+    "home=$(cd \"$start\" 2>/dev/null && pwd -P || printf '%s' \"$start\"); " +
+    "case \"$home\" in /home/*|/root) ;; *) exit 0 ;; esac; " +
+    "ulimit -t 6 2>/dev/null; ulimit -v 262144 2>/dev/null; " +
+    "inside() { n=0; while IFS= read -r p; do " +
+    "  [ -z \"$p\" ] && continue; " +
+    "  d=$(dirname \"$p\"); b=$(basename \"$p\"); " +
+    "  rp=$(cd \"$d\" 2>/dev/null && printf '%s/%s\\n' \"$(pwd -P)\" \"$b\" || printf '%s\\n' \"$p\"); " +
+    "  case \"$rp\" in \"$home\"|\"$home\"/*) printf '%s\\n' \"$rp\"; n=$((n+1)); [ \"$n\" -ge 36 ] && break ;; esac; " +
+    "done; }; " +
+    "wrap() { if command -v timeout >/dev/null 2>&1; then timeout -k 1 5 \"$@\"; else \"$@\"; fi; }; " +
+    "fd_bin=$(command -v fd || command -v fdfind || true); " +
+    "if [ -n \"$fd_bin\" ]; then " +
+    "  wrap \"$fd_bin\" -a -t f --one-file-system --changed-within 180d --max-results 36 --max-depth 8 " +
+    "    -e jpg -e jpeg -e png -e webp -e gif -e bmp " +
+    "    -E node_modules -E .git -E dist -E target -E __pycache__ -E .venv -E venv " +
+    "    -E .cache -E .local -E .npm -E .cargo -E .flatpak " +
+    "    . \"$home\" 2>/dev/null | inside; " +
+    "  exit 0; " +
+    "fi; " +
+    "set --; " +
+    "for d in Pictures Downloads Desktop Documents; do " +
+    "  [ -d \"$home/$d\" ] && set -- \"$@\" \"$home/$d\"; " +
+    "done; " +
+    "if [ $# -eq 0 ]; then set -- \"$home\"; depth=2; else depth=3; fi; " +
+    "wrap find -P \"$@\" -xdev -maxdepth \"$depth\" " +
+    "  \\( -name node_modules -o -name .git -o -name .cache -o -name .local \\) -prune " +
+    "  -o -type f \\( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' -o -iname '*.gif' \\) -print 2>/dev/null | " +
+    "awk 'BEGIN{n=0} { print; n++; if (n>=36) exit }' | inside"
+
   readonly property string readBody: "head -c 200000 \"$1\""
 
   readonly property string pdfBody: "src=\"$1\"; out=\"$2\"; " +
@@ -103,20 +134,24 @@ Item {
     "else pdftoppm -png -r 110 -f 1 -l \"$n\" \"$src\" \"$out/page\" >/dev/null 2>&1; fi; " +
     "ls -1 \"$out\"/page*.png 2>/dev/null"
 
-  readonly property string imageBody: "src=\"$1\"; out=\"$2\"; edge=\"${3:-4472}\"; force=\"${4:-0}\"; " +
-    "case \"$edge\" in ''|*[!0-9]*) edge=4472 ;; esac; " +
-    "MAXPX=20000000; " +
+  readonly property string imageBody: "src=\"$1\"; out=\"$2\"; edge=\"${3:-2048}\"; force=\"${4:-0}\"; " +
+    "case \"$edge\" in ''|*[!0-9]*) edge=2048 ;; esac; " +
+    "MAXPX=20000000; MAXSIDE=8192; " +
     "ident=$(command -v identify || true); " +
     "conv=$(command -v magick || command -v convert || true); " +
     "ff=$(command -v ffmpeg || true); " +
     "mkdir -p \"$(dirname \"$out\")\" || { printf '%s' TOO_LARGE; exit 0; }; " +
     "ulimit -t 8 2>/dev/null; ulimit -v 524288 2>/dev/null; ulimit -f 8192 2>/dev/null; " +
-    "px=0; " +
+    "px=0; w=0; h=0; " +
     "if [ -n \"$ident\" ]; then " +
-    "  px=$(\"$ident\" -ping -format '%[fx:int(w*h)]' \"$src\" 2>/dev/null || printf '0'); " +
-    "  case \"$px\" in ''|*[!0-9]*) px=0 ;; esac; " +
+    "  w=$(\"$ident\" -ping -format '%w' \"$src\" 2>/dev/null || printf '0'); " +
+    "  h=$(\"$ident\" -ping -format '%h' \"$src\" 2>/dev/null || printf '0'); " +
+    "  case \"$w\" in ''|*[!0-9]*) w=0 ;; esac; " +
+    "  case \"$h\" in ''|*[!0-9]*) h=0 ;; esac; " +
+    "  px=$((w*h)); " +
     "fi; " +
-    "if [ \"$force\" != 1 ] && [ \"$px\" -gt 0 ] && [ \"$px\" -le \"$MAXPX\" ]; then printf '%s' \"$src\"; exit 0; fi; " +
+    "if [ \"$px\" -gt \"$MAXPX\" ]; then printf '%s' TOO_LARGE; exit 0; fi; " +
+    "if [ \"$force\" != 1 ] && [ \"$w\" -gt 0 ] && [ \"$h\" -gt 0 ] && [ \"$w\" -le \"$edge\" ] && [ \"$h\" -le \"$edge\" ]; then printf '%s' \"$src\"; exit 0; fi; " +
     "ok=0; " +
     "if [ -n \"$conv\" ]; then " +
     "  \"$conv\" \"$src\" -limit memory 256MiB -limit map 256MiB -resize \"${edge}x${edge}>\" \"$out\" >/dev/null 2>&1 && [ -s \"$out\" ] && ok=1; " +
@@ -139,6 +174,17 @@ Item {
     "else \"$ff\" -hide_banner -loglevel error -nostdin -y -ss \"$1\" -i \"$src\" -frames:v 1 -vf 'scale=640:-2' -q:v 3 \"$out\" >/dev/null 2>&1; fi; }; " +
     "grab 1; " +
     "if [ ! -s \"$out\" ]; then grab 0; fi; " +
+    "if [ -s \"$out\" ]; then printf '%s' \"$out\"; fi"
+
+  readonly property string audioCoverBody: "src=\"$1\"; out=\"$2\"; " +
+    "ff=$(command -v ffmpeg || true); " +
+    "if [ -z \"$ff\" ]; then exit 0; fi; " +
+    "ulimit -t 6 2>/dev/null; ulimit -v 262144 2>/dev/null; ulimit -f 4096 2>/dev/null; " +
+    "mkdir -p \"$(dirname \"$out\")\" || exit 0; " +
+    "if [ -s \"$out\" ]; then printf '%s' \"$out\"; exit 0; fi; " +
+    "grab() { if command -v timeout >/dev/null 2>&1; then timeout -k 1 5 \"$ff\" -hide_banner -loglevel error -nostdin -y -i \"$src\" -an -frames:v 1 -vf 'scale=640:640:force_original_aspect_ratio=decrease' -q:v 3 \"$out\" >/dev/null 2>&1; " +
+    "else \"$ff\" -hide_banner -loglevel error -nostdin -y -i \"$src\" -an -frames:v 1 -vf 'scale=640:640:force_original_aspect_ratio=decrease' -q:v 3 \"$out\" >/dev/null 2>&1; fi; }; " +
+    "grab; " +
     "if [ -s \"$out\" ]; then printf '%s' \"$out\"; fi"
 
   readonly property string zipBody: "src=\"$1\"; " +
@@ -191,6 +237,25 @@ Item {
     root.resultsRevision += 1
     root.lastStatus = "hits:" + hits.length
     root.enqueueThumbs(hits)
+  }
+  function applyImageList(text) {
+    var lines = String(text || "").split(/\r?\n/)
+    var hits = []
+    var seen = ({})
+    for (var i = 0; i < lines.length && hits.length < 36; i++) {
+      var p = String(lines[i] || "").replace(/^\s+|\s+$/g, "").replace(/^'+|'+$/g, "")
+      if (!p.length || p.charAt(0) !== "/") continue
+      if (!root.underHome(p)) continue
+      if (seen[p]) continue
+      if (Format.kindOf(p, false) !== "image") continue
+      seen[p] = true
+      var slash = p.lastIndexOf("/")
+      var name = slash >= 0 ? p.slice(slash + 1) : p
+      if (!name.length) continue
+      hits.push({ path: p, name: name, kind: "image", score: 100, mtime: 0, size: 0 })
+    }
+    if (hits.length)
+      root.lastImages = hits
   }
   function diskHuman(n) {
     var v = Number(n) || 0
@@ -276,7 +341,7 @@ Item {
       var cache = Format.imageThumbPath(p, root.home)
       imageProc.command = ["sh", "-c", root.imageBody, "overview-image", p, cache, "2048", "0"]
       imageProc.running = true
-      root.lastPreview = Format.localPreview(p)
+      root.lastPreview = { kind: "image", path: "", blocked: false, label: Format.basename(p) }
       return String(root.previewRevision + 1)
     }
     if (kind === "pdf") {
@@ -295,6 +360,15 @@ Item {
       videoProc.command = ["sh", "-c", root.videoBody, "overview-video", p, vout]
       videoProc.running = true
       root.lastPreview = { kind: "video", path: p, thumb: vout, label: Format.basename(p) }
+      return String(root.previewRevision + 1)
+    }
+    if (kind === "audio") {
+      if (audioProc.running) audioProc.running = false
+      audioKill.restart()
+      var aout = Format.audioCoverPath(p, root.home)
+      audioProc.command = ["sh", "-c", root.audioCoverBody, "overview-cover", p, aout]
+      audioProc.running = true
+      root.lastPreview = { kind: "audio", path: p, cover: "", label: Format.basename(p) }
       return String(root.previewRevision + 1)
     }
     if (kind === "zip") {
@@ -344,8 +418,15 @@ Item {
       home: root.home,
       diskLabel: root.diskLabel,
       diskUsedFrac: root.diskUsedFrac,
-      diskTotal: root.diskTotal
+      diskTotal: root.diskTotal,
+      images: root.lastImages
     })
+  }
+  function queryImages() {
+    if (imageSearchProc.running) return "ok"
+    imageSearchProc.command = ["sh", "-c", root.imageSearchBody, "overview-images", root.home]
+    imageSearchProc.running = true
+    return "ok"
   }
   function enqueueThumbs(hits) {
     var q = []
@@ -358,6 +439,9 @@ Item {
       } else if (hit.kind === "image") {
         var iout = Format.imageThumbPath(hit.path, root.home)
         if (iout.length) q.push({ kind: "image", src: String(hit.path), out: iout })
+      } else if (hit.kind === "audio") {
+        var aout = Format.audioCoverPath(hit.path, root.home)
+        if (aout.length) q.push({ kind: "audio", src: String(hit.path), out: aout })
       }
     }
     root.videoQueue = q
@@ -371,6 +455,8 @@ Item {
     if (!job || !root.underHome(job.src)) { Qt.callLater(root.runThumbQueue); return }
     if (job.kind === "image")
       thumbProc.command = ["sh", "-c", root.imageBody, "overview-ithumb", job.src, job.out, "640", "1"]
+    else if (job.kind === "audio")
+      thumbProc.command = ["sh", "-c", root.audioCoverBody, "overview-athumb", job.src, job.out]
     else
       thumbProc.command = ["sh", "-c", root.videoBody, "overview-vthumb", job.src, job.out]
     thumbProc.running = true
@@ -492,6 +578,33 @@ Item {
     onTriggered: { if (videoProc.running) videoProc.running = false }
   }
   Process {
+    id: audioProc
+    running: false
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        audioKill.stop()
+        var out = String(text || "").replace(/^\s+|\s+$/g, "")
+        if (!out.length || out.indexOf(root.home + "/.cache/overview/") !== 0)
+          out = ""
+        root.lastPreview = {
+          kind: "audio",
+          path: root.previewPath,
+          cover: out,
+          label: Format.basename(root.previewPath)
+        }
+        root.previewRevision += 1
+      }
+    }
+    onExited: audioKill.stop()
+  }
+  Timer {
+    id: audioKill
+    interval: 6000
+    repeat: false
+    onTriggered: { if (audioProc.running) audioProc.running = false }
+  }
+  Process {
     id: zipProc
     running: false
     stdout: StdioCollector {
@@ -579,12 +692,25 @@ Item {
       dfProc.running = true
     }
   }
+  Process {
+    id: imageSearchProc
+    running: false
+    stdout: StdioCollector {
+      id: imageSearchOut
+      waitForEnd: true
+      onStreamFinished: root.applyImageList(text)
+    }
+    onExited: function() {
+      root.applyImageList(String(imageSearchOut.text || ""))
+    }
+  }
   IpcHandler {
     target: "io.github.overview"
     function ping(arg: string): string { return "ok" }
     function status(arg: string): string { return root.snapshotJson() }
     function snapshot(arg: string): string { return root.snapshotJson() }
     function query(q: string): string { return String(root.query(q)) }
+    function queryImages(arg: string): string { return root.queryImages() }
     function preview(path: string): string { return root.preview(path) }
     function prefetch(path: string): string { return root.prefetch(path) }
     function open(path: string): string { return root.openPath(path) }
