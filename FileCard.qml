@@ -18,7 +18,12 @@ Item {
   readonly property string title: hit && hit.name ? String(hit.name) : Format.basename(path)
   readonly property bool isImage: kind === "image"
   readonly property bool isVideo: kind === "video"
-  readonly property string thumbCache: isVideo ? Format.videoThumbPath(path, homePrefix) : Format.imageThumbPath(path, homePrefix)
+  readonly property bool isAudio: kind === "audio"
+  readonly property string thumbCache: {
+    if (isVideo) return Format.videoThumbPath(path, homePrefix)
+    if (isAudio) return Format.audioCoverPath(path, homePrefix)
+    return Format.imageThumbPath(path, homePrefix)
+  }
   readonly property string folder: Format.homeRelative(Format.dirname(path), homePrefix)
 
   Rectangle {
@@ -45,9 +50,9 @@ Item {
         Image {
           id: thumb
           anchors.fill: parent
-          visible: (root.isImage || root.isVideo) && root.path.length
+          visible: (root.isImage || root.isVideo || root.isAudio) && root.path.length
           source: {
-            if ((root.isImage || root.isVideo) && root.thumbCache.length)
+            if ((root.isImage || root.isVideo || root.isAudio) && root.thumbCache.length)
               return Format.fileUrl(root.thumbCache)
             return ""
           }
@@ -58,7 +63,7 @@ Item {
           sourceSize.width: 640
           sourceSize.height: 360
           onStatusChanged: {
-            if ((root.isVideo || root.isImage) && status === Image.Error)
+            if ((root.isVideo || root.isImage || root.isAudio) && status === Image.Error)
               thumbRetry.restart()
           }
         }
@@ -69,7 +74,7 @@ Item {
           repeat: false
           property int tries: 0
           onTriggered: {
-            if (thumb.status === Image.Ready || (!root.isVideo && !root.isImage)) { tries = 0; return }
+            if (thumb.status === Image.Ready || (!root.isVideo && !root.isImage && !root.isAudio)) { tries = 0; return }
             if (tries > 8) { tries = 0; return }
             tries += 1
             var s = Format.fileUrl(root.thumbCache) + "#" + tries
@@ -80,7 +85,7 @@ Item {
 
         Text {
           anchors.centerIn: parent
-          visible: !(thumb.status === Image.Ready && (root.isImage || root.isVideo))
+          visible: !(thumb.status === Image.Ready && (root.isImage || root.isVideo || root.isAudio))
           text: Format.glyphFor(root.kind)
           color: root.foreground
           opacity: 0.7
