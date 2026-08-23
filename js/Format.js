@@ -5,6 +5,7 @@ var PDF_EXT = { pdf: 1 }
 var CSV_EXT = { csv: 1, tsv: 1 }
 var CODE_EXT = { rs: 1, js: 1, ts: 1, py: 1, go: 1, md: 1, qml: 1, json: 1, sh: 1, lua: 1, txt: 1, toml: 1, yml: 1, yaml: 1, css: 1, html: 1, c: 1, h: 1, cpp: 1 }
 var VIDEO_EXT = { mp4: 1, mkv: 1, webm: 1, mov: 1, avi: 1, m4v: 1, wmv: 1, mpeg: 1, mpg: 1, m2ts: 1, ts: 1, flv: 1, ogv: 1, mts: 1 }
+var AUDIO_EXT = { mp3: 1, m4a: 1, aac: 1, flac: 1, ogg: 1, opus: 1, wav: 1, wma: 1, oga: 1 }
 var ZIP_EXT = { zip: 1, jar: 1, apk: 1, whl: 1, egg: 1, crx: 1, xpi: 1 }
 
 function extOf(path) {
@@ -33,6 +34,11 @@ function videoThumbPath(path, home) {
   if (!h.length) return ""
   return h + "/.cache/overview/vid/" + cacheKey(path) + ".jpg"
 }
+function audioCoverPath(path, home) {
+  var h = String(home || "")
+  if (!h.length) return ""
+  return h + "/.cache/overview/art/" + cacheKey(path) + ".jpg"
+}
 function imageThumbPath(path, home) {
   var h = String(home || "")
   if (!h.length) return ""
@@ -51,6 +57,7 @@ function kindOf(path, isDir) {
   var ext = extOf(path)
   if (IMAGE_EXT[ext]) return "image"
   if (VIDEO_EXT[ext]) return "video"
+  if (AUDIO_EXT[ext]) return "audio"
   if (PDF_EXT[ext]) return "pdf"
   if (isArchiveName(path)) return "zip"
   if (CSV_EXT[ext]) return "csv"
@@ -60,6 +67,7 @@ function kindOf(path, isDir) {
 function glyphFor(kind) {
   if (kind === "image") return "▣"
   if (kind === "video") return "▶"
+  if (kind === "audio") return "♫"
   if (kind === "pdf") return "▤"
   if (kind === "zip") return "▣"
   if (kind === "csv") return "▦"
@@ -70,6 +78,7 @@ function glyphFor(kind) {
 function kindLabel(kind) {
   if (kind === "image") return "Image"
   if (kind === "video") return "Video"
+  if (kind === "audio") return "Audio"
   if (kind === "pdf") return "PDF"
   if (kind === "zip") return "Archive"
   if (kind === "csv") return "Table"
@@ -80,6 +89,7 @@ function kindLabel(kind) {
 function kindTint(kind) {
   if (kind === "image") return "#3d2a4a"
   if (kind === "video") return "#1a2438"
+  if (kind === "audio") return "#2a1c28"
   if (kind === "pdf") return "#3a221c"
   if (kind === "zip") return "#2a2418"
   if (kind === "csv") return "#1c3328"
