@@ -1,6 +1,6 @@
 # Overview
 
-Omarchy shell plugin: search your home folder and preview files from the bar.
+Omarchy shell plugin: search your home folder and preview files from the bar. Idle Cinema Mode in 60s for viewing images using Ken Burns style.
 
 ![Overview](preview.png)
 
@@ -26,6 +26,12 @@ o.bind("SUPER + A", "Overview", "omarchy-shell shell toggle io.github.overview")
 ```
 
 Choose any unused chord if `SUPER + A` is already bound.
+
+Install FFMPEG for video playback
+```sh
+sudo pacman -S ffmpeg
+```
+
 
 
 ### Manual zip download
@@ -91,9 +97,10 @@ Click the search icon in the bar. Overview opens **fullscreen**: a hero preview 
 | PDF | `pdftoppm` in a disposable subprocess with CPU/memory rlimits and a wall-clock kill. No poppler → designed empty state. Enter still opens. |
 | CSV / TSV | First 500 rows as a zebra table; delimiter sniffing. |
 | Directories | Entry listing + total size. |
+| Videos | Playback with FFMPEG installed only. |
 | Anything else | Hex head + `file`-style magic. Never a blank pane. |
 
-Video is **not** a player in 1.0. If `ffmpeg` is present the helper extracts a poster frame; otherwise the row shows metadata only.
+
 
 ## Settings
 
