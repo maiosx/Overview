@@ -18,16 +18,44 @@ Item {
   property int pinPage: 1
   property bool selectable: true
   property bool autoplay: false
+  property string playPath: ""
+  property int playFails: 0
   readonly property string kind: String(preview && preview.kind ? preview.kind : "")
   readonly property string bodyText: {
     if (preview && preview.text) return Format.previewText(String(preview.text).slice(0, 200000))
     if (preview && preview.hex) return Format.previewText(String(preview.hex).slice(0, 4096))
     if (preview && preview.html)
-      return String(preview.html).replace(/<[^>]+>/g, "").replace(/</g, "<").replace(/>/g, ">").replace(/&/g, "&")
+      return String(preview.html).replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&")
     return String((preview && preview.label) || "")
   }
   readonly property bool showText: root.kind === "code" || root.kind === "csv" || root.kind === "hex" || root.kind === "zip"
   readonly property var pdfPages: preview && preview.pages && preview.pages.length ? preview.pages : []
+
+  function videoSrc() {
+    if (!root.autoplay || root.kind !== "video") return ""
+    return String(preview && preview.path ? preview.path : "")
+  }
+  function syncVideo() {
+    var p = root.videoSrc()
+    if (p === root.playPath) {
+      if (p.length && root.playFails < 3 && vidPlayer.playbackState === MediaPlayer.StoppedState)
+        vidPlayer.play()
+      return
+    }
+    root.playPath = p
+    root.playFails = 0
+    if (!p.length) {
+      vidPlayer.stop()
+      vidPlayer.source = ""
+      return
+    }
+    vidPlayer.source = Format.fileUrl(p)
+    vidPlayer.play()
+  }
+  onAutoplayChanged: Qt.callLater(syncVideo)
+  onKindChanged: Qt.callLater(syncVideo)
+  onPreviewChanged: Qt.callLater(syncVideo)
+  Component.onCompleted: Qt.callLater(syncVideo)
 
   Rectangle {
     anchors.fill: parent
@@ -91,12 +119,21 @@ Item {
         volume: 1.0
       }
       loops: MediaPlayer.Infinite
-      source: root.autoplay && root.kind === "video" && preview && preview.path ? Format.fileUrl(preview.path) : ""
-      onSourceChanged: {
-        if (source && source.toString().length)
+      onMediaStatusChanged: {
+        if (!root.autoplay || !root.playPath.length) return
+        if (mediaStatus === MediaPlayer.EndOfMedia) {
+          position = 0
           play()
-        else
-          stop()
+        }
+      }
+      onPlaybackStateChanged: {
+        if (!root.autoplay || !root.playPath.length || root.playFails > 2) return
+        if (playbackState === MediaPlayer.StoppedState && mediaStatus === MediaPlayer.EndOfMedia)
+          play()
+      }
+      onErrorChanged: {
+        if (error !== MediaPlayer.NoError)
+          root.playFails += 1
       }
     }
 

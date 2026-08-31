@@ -14,12 +14,28 @@ Item {
   readonly property string cover: String(preview && preview.cover ? preview.cover : "")
   readonly property string path: String(preview && preview.path ? preview.path : "")
   readonly property bool playing: audioPlayer.playbackState === MediaPlayer.PlayingState
+  property string playPath: ""
 
   function toggle() {
     if (!path.length) return
     if (root.playing) audioPlayer.pause()
     else audioPlayer.play()
   }
+  function syncAudio() {
+    var p = root.autoplay ? String(root.path || "") : ""
+    if (p === root.playPath) return
+    root.playPath = p
+    if (!p.length) {
+      audioPlayer.stop()
+      audioPlayer.source = ""
+      return
+    }
+    audioPlayer.source = Format.fileUrl(p)
+    audioPlayer.play()
+  }
+  onAutoplayChanged: Qt.callLater(syncAudio)
+  onPathChanged: Qt.callLater(syncAudio)
+  Component.onCompleted: Qt.callLater(syncAudio)
   function fmtTime(ms) {
     var s = Math.floor((Number(ms) || 0) / 1000)
     if (s < 0) s = 0
@@ -31,11 +47,6 @@ Item {
   MediaPlayer {
     id: audioPlayer
     audioOutput: AudioOutput { volume: 1.0 }
-    source: root.autoplay && root.path.length ? Format.fileUrl(root.path) : ""
-    onSourceChanged: {
-      if (source && source.toString().length) play()
-      else stop()
-    }
   }
 
   Column {

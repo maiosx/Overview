@@ -222,10 +222,16 @@ Item {
     if (!isNaN(prev) && prev !== root.lastPreviewRev) {
       var pv = snap.preview || {}
       if (root.previewMatches(pv)) {
+        var sameVid = root.pinned && root.previewResult && pv
+          && String(root.previewResult.kind || "") === "video"
+          && String(pv.kind || "") === "video"
+          && String(root.previewResult.path || "") === String(pv.path || "")
         root.lastPreviewRev = prev
-        root.previewResult = pv
+        if (!sameVid)
+          root.previewResult = pv
         root.previewLoading = false
-        root.queueHero(root.heroThumb)
+        if (!sameVid)
+          root.queueHero(root.heroThumb)
       } else {
         root.lastPreviewRev = prev
       }
@@ -352,6 +358,13 @@ Item {
     root.cinemaLastPick = i
     var p = String(hits[i].path || "")
     if (!p.length) return
+    var list = root.results || []
+    for (var j = 0; j < list.length; j++) {
+      if (list[j] && String(list[j].path || "") === p) {
+        root.selectIndex(j)
+        return
+      }
+    }
     root.requestPreview(p, 1)
   }
   function selectIndex(i) {
@@ -408,7 +421,10 @@ Item {
       Qt.callLater(function() { overlayWin.focusSearch() })
     }
   }
-  function kickDebounce() { debounce.restart() }
+
+  function kickDebounce() {
+    debounce.restart()
+  }
 
   Process {
     id: ipcProc

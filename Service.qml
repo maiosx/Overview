@@ -354,13 +354,19 @@ Item {
       return String(root.previewRevision + 1)
     }
     if (kind === "video") {
-      if (videoProc.running) videoProc.running = false
-      videoKill.restart()
       var vout = Format.videoThumbPath(p, root.home)
-      videoProc.command = ["sh", "-c", root.videoBody, "overview-video", p, vout]
-      videoProc.running = true
-      root.lastPreview = { kind: "video", path: p, thumb: vout, label: Format.basename(p) }
-      return String(root.previewRevision + 1)
+      var sameVid = root.lastPreview && root.lastPreview.kind === "video" && String(root.lastPreview.path || "") === p
+      if (!sameVid) {
+        root.lastPreview = { kind: "video", path: p, thumb: vout, label: Format.basename(p) }
+        root.previewRevision += 1
+      }
+      if (!sameVid) {
+        if (videoProc.running) videoProc.running = false
+        videoKill.restart()
+        videoProc.command = ["sh", "-c", root.videoBody, "overview-video", p, vout]
+        videoProc.running = true
+      }
+      return String(root.previewRevision)
     }
     if (kind === "audio") {
       if (audioProc.running) audioProc.running = false
@@ -559,14 +565,15 @@ Item {
         var out = String(text || "").replace(/^\s+|\s+$/g, "")
         if (!out.length || out.indexOf(root.home + "/.cache/overview/") !== 0)
           out = Format.videoThumbPath(root.previewPath, root.home)
+        var same = root.lastPreview && root.lastPreview.kind === "video" && String(root.lastPreview.path || "") === root.previewPath
         root.lastPreview = {
           kind: "video",
           path: root.previewPath,
           thumb: out,
-          stamp: Date.now(),
           label: Format.basename(root.previewPath)
         }
-        root.previewRevision += 1
+        if (!same)
+          root.previewRevision += 1
       }
     }
     onExited: videoKill.stop()
